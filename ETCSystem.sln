@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ETCGatewayAPI", "ETCGatewayAPI\ETCGatewayAPI.csproj", "{9FAD63FA-0CEB-4EC9-BCCA-330A47B72730}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EtcMwApi", "EtcMwApi\EtcMwApi.csproj", "{FC6AC994-7603-4D6E-A54B-8E50936454BD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Etc.Shared", "Etc.Shared\Etc.Shared.csproj", "{786AD31B-1DCD-4323-8C1B-ED67D496A1CA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9FAD63FA-0CEB-4EC9-BCCA-330A47B72730}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9FAD63FA-0CEB-4EC9-BCCA-330A47B72730}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9FAD63FA-0CEB-4EC9-BCCA-330A47B72730}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9FAD63FA-0CEB-4EC9-BCCA-330A47B72730}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FC6AC994-7603-4D6E-A54B-8E50936454BD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FC6AC994-7603-4D6E-A54B-8E50936454BD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FC6AC994-7603-4D6E-A54B-8E50936454BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FC6AC994-7603-4D6E-A54B-8E50936454BD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{786AD31B-1DCD-4323-8C1B-ED67D496A1CA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{786AD31B-1DCD-4323-8C1B-ED67D496A1CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{786AD31B-1DCD-4323-8C1B-ED67D496A1CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{786AD31B-1DCD-4323-8C1B-ED67D496A1CA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
