@@ -7,6 +7,7 @@ using Etc.Shared.Interfaces;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddScoped<ITranService, TranService>();
+builder.Services.AddScoped<IWalletTransactionService, WalletTransactionService>();
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle

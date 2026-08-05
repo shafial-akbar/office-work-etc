@@ -1,7 +1,12 @@
-﻿namespace Etc.Shared.Models
+﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations;
+
+namespace Etc.Shared.Models
 {
     public class TransactionLog
     {
+        [Key]
+        [Column("Id")]
         public Guid Id { get; set; }
         public string PartnerId { get; set; }
         public string PartnerTxnId { get; set; }
@@ -16,5 +21,8 @@
         public string SblTxnId { get; set; }
         public string AccountNo { get; set; }
         public decimal? TransactionAmount { get; set; }
+        public decimal? BalanceBefore { get; set; }
+        public decimal? BalanceAfter { get; set; }
+        public string TranMode { get; set; } // "Credit", "Debit"
     }
 }

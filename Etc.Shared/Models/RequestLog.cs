@@ -1,11 +1,13 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Etc.Shared.Models
 {
     public class RequestLog
     {
-        [Key] // Add this attribute
-        public int Id { get; set; } // Add primary key
+        [Key]
+        [Column("Id")]
+        public Guid Id { get; set; }
         public string? RequestMethod { get; set; }
         public string? RequestPath { get; set; }
         public string? RequestQuery { get; set; }
