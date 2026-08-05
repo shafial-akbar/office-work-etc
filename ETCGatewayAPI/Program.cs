@@ -1,4 +1,12 @@
+using ETCGatewayAPI.Data;
+using ETCGatewayAPI.Services;
+using Etc.Shared.DTOs;
+using Etc.Shared.Interfaces;
+
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddScoped<ITranService, TranService>();
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle

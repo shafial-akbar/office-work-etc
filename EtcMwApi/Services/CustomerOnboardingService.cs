@@ -43,7 +43,7 @@ namespace EtcMwApi.Services
                 // 2. Common Mapping
                 var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
 
-                await _context.VehicleInformations.AddAsync(vehicle);
+                await _context.Vehicles.AddAsync(vehicle);
                 await _context.SaveChangesAsync();
 
                 // 3. Common Remote Registration
@@ -85,7 +85,7 @@ namespace EtcMwApi.Services
                 // 2. Common Mapping
                 var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
 
-                await _context.VehicleInformations.AddAsync(vehicle);
+                await _context.Vehicles.AddAsync(vehicle);
                 await _context.SaveChangesAsync();
 
                 // 3. Common Remote Registration
@@ -142,7 +142,7 @@ namespace EtcMwApi.Services
                 // 2. Common Mapping
                 var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
 
-                await _context.VehicleInformations.AddAsync(vehicle);
+                await _context.Vehicles.AddAsync(vehicle);
                 await _context.SaveChangesAsync();
 
                 // 3. Common Remote Registration
@@ -197,7 +197,7 @@ namespace EtcMwApi.Services
                 }
 
                 // Fetch corresponding Vehicle record using WalletId and Registration Number
-                var vehicle = await _context.VehicleInformations
+                var vehicle = await _context.Vehicles
                     .FirstOrDefaultAsync(v => v.WalletId == wallet.Id &&
                                               v.VehicleRegistrationNumber == request.VehicleRegistrationNumber &&
                                               v.Status == VehicleStatus.Active); // Replaced "Active"
@@ -333,7 +333,7 @@ namespace EtcMwApi.Services
 
         private async Task ValidateLocalVehicleExistenceAsync(string vehicleRegNo)
         {
-            bool exists = await _context.VehicleInformations.AnyAsync(v => v.VehicleRegistrationNumber == vehicleRegNo);
+            bool exists = await _context.Vehicles.AnyAsync(v => v.VehicleRegistrationNumber == vehicleRegNo);
             if (exists)
             {
                 throw new InvalidOperationException($"Vehicle registration number {vehicleRegNo} already exists in local DB.");

@@ -25,7 +25,7 @@ namespace EtcMwApi.Services
         public async Task<IEnumerable<Vehicle>> GetAllAsync()
         {
             // AsNoTracking() ব্যবহার করে রিড পারফরম্যান্স বাড়ানো হয়েছে
-            return await _context.VehicleInformations
+            return await _context.Vehicles
                 .AsNoTracking()
                 .ToListAsync();
         }
@@ -33,13 +33,13 @@ namespace EtcMwApi.Services
         public async Task<Vehicle?> GetByIdAsync(Guid id)
         {
             // int এর বদলে Guid দিয়ে ফিল্টার
-            return await _context.VehicleInformations
+            return await _context.Vehicles
                 .FirstOrDefaultAsync(v => v.Id == id);
         }
 
         public async Task<Vehicle?> GetByVehicleIdAsync(string vehicleRegistrationNumber)
         {
-            return await _context.VehicleInformations
+            return await _context.Vehicles
                 .AsNoTracking()
                 .FirstOrDefaultAsync(v => v.VehicleRegistrationNumber == vehicleRegistrationNumber);
         }
@@ -57,7 +57,7 @@ namespace EtcMwApi.Services
                 vehicle.RegisterDate = DateTime.UtcNow;
             }
 
-            await _context.VehicleInformations.AddAsync(vehicle);
+            await _context.Vehicles.AddAsync(vehicle);
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Vehicle registered successfully. ID: {VehicleId}", vehicle.Id);
@@ -66,7 +66,7 @@ namespace EtcMwApi.Services
 
         public async Task UpdateAsync(Vehicle vehicle)
         {
-            _context.VehicleInformations.Update(vehicle);
+            _context.Vehicles.Update(vehicle);
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Vehicle updated successfully. ID: {VehicleId}", vehicle.Id);
@@ -74,10 +74,10 @@ namespace EtcMwApi.Services
 
         public async Task DeleteAsync(Guid id)
         {
-            var vehicle = await _context.VehicleInformations.FindAsync(id);
+            var vehicle = await _context.Vehicles.FindAsync(id);
             if (vehicle != null)
             {
-                _context.VehicleInformations.Remove(vehicle);
+                _context.Vehicles.Remove(vehicle);
                 await _context.SaveChangesAsync();
 
                 _logger.LogInformation("Vehicle deleted successfully. ID: {VehicleId}", id);
