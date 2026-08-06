@@ -55,4 +55,5 @@ namespace Etc.Shared.DTOs
         public string TranStatus { get; set; } = string.Empty;
         public decimal TransactionAmount { get; set; }
     }
+
 }

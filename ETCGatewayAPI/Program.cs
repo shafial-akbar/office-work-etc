@@ -1,53 +1,130 @@
-using ETCGatewayAPI.Data;
+﻿using ETCGatewayAPI.Data;
 using ETCGatewayAPI.Services;
 using Etc.Shared.DTOs;
 using Etc.Shared.Interfaces;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using Serilog;
+using System.Text;
+using System;
 
-
+// WebApplicationBuilder ইন্সট্যান্স তৈরি ও অ্যাপ্লিকেশনের সার্ভিস কনফিগারেশন সূচনা
 var builder = WebApplication.CreateBuilder(args);
 
+// =========================================================================
+// 1. DATABASE CONFIGURATION (PostgreSQL Engine Setup)
+// =========================================================================
+// appsettings.json থেকে ConnectionString নিয়ে Entity Framework Core-এর মাধ্যমে PostgreSQL সংযোগ যুক্ত করা হচ্ছে
+builder.Services.AddDbContext<DatabaseContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+
+// =========================================================================
+// 2. DEPENDENCY INJECTION (Services & Business Logic Lifetimes)
+// =========================================================================
+// অ্যাপ্লিকেশন লেভেলের বিজনেস লজিক সার্ভিসসমূহ Scope স্পেসিফিকেশনসহ ইনজেক্ট করা হচ্ছে (Per HTTP Request Lifetime)
 builder.Services.AddScoped<ITranService, TranService>();
 builder.Services.AddScoped<IWalletTransactionService, WalletTransactionService>();
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
+// =========================================================================
+// 3. SECURITY & AUTHENTICATION (JWT Bearer Token Validation)
+// =========================================================================
+// ইনকামিং HTTP রিকোয়েস্টের সাথে প্রেরিত JWT Bearer টোকেন যাচাইকরণের নিয়মাবলী কনফিগার করা হচ্ছে
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,                                            // টোকেন ইস্যুকারী সিগনেচার যাচাই
+            ValidateAudience = true,                                          // ক্লায়েন্ট বা গ্রহীতার সিগনেচার যাচাই
+            ValidateLifetime = true,                                          // টোকেনের মেয়াদের সময়সীমা যাচাই
+            ValidateIssuerSigningKey = true,                                  // গোপন সিক্রেট কি (Secret Key) সিগনেচার ম্যাচিং যাচাই
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],                 // অনুমোদিত ইস্যুকারী ডোমেইন/নাম
+            ValidAudience = builder.Configuration["Jwt:Audience"],             // অনুমোদিত অডিয়েন্স ডোমেইন/নাম
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))     // সিমেট্রিক এনক্রিপশন কি ডিকোড
+        };
+    });
+
+
+// =========================================================================
+// 4. STRUCTURED LOGGING CONFIGURATION (Serilog Setup)
+// =========================================================================
+// অ্যাপ্লিকেশনের ইভেন্ট এবং এরর ফাইল-ভিত্তিক অডিটিংয়ের জন্য Serilog কনফিগারেশন (দৈনিক রোটেটিং ফাইল অপশনসহ)
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.File("logs/etcmiddleware-.log", rollingInterval: RollingInterval.Day)
+    .CreateLogger();
+
+// ডিফল্ট ASP.NET Core প্রোভাইডারের জায়গায় Serilog সেটআপ যুক্ত করা
+builder.Host.UseSerilog();
+
+
+// =========================================================================
+// 5. API CONTROLLERS & OPENAPI/SWAGGER DOCUMENTATION SETUP
+// =========================================================================
+// কন্ট্রোলার সার্ভিসেস এবং এন্ডপয়েন্ট এক্সপ্লোরার রেজিস্টার
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+
+// Swagger UI ডকুমেন্টেশন কনফিগারেশন (JWT Bearer Token দিয়ে টেস্ট করার অপশনসহ)
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "ETC Middleware API", Version = "v1" });
+
+    // Swagger UI-তে Authorization Header এনাবল করার জন্য সিকিউরিটি ডেফিনিশন যুক্তকরণ
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme (e.g., 'Bearer <your_token>')",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+
+    // মেথড বা কন্ট্রোলার টেস্ট করার সময় ডাইনামিকালি Bearer টোকেন পাস করার স্কিম লিংক করা
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            new string[] {}
+        }
+    });
+});
+
+
+// =========================================================================
+// 6. PIPELINE & MIDDLEWARE EXECUTION BUILD
+// =========================================================================
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// শুধুমাত্র ডেভলপমেন্ট এনভায়রনমেন্টে Swagger ডকুমেন্টেশন ভিজ্যুয়ালাইজ করার পাইপলাইন
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
+// HTTP রিকোয়েস্ট নিরাপদ HTTPS প্রোটোকলে রিডাইরেক্ট করা
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+// মিডলওয়্যার পাইপলাইন আর্কিটেকচার (Authentication অবশ্যই Authorization-এর পূর্বে থাকতে হবে)
+app.UseAuthentication();  // রিকোয়েস্ট থেকে ইউজার বা ক্লায়েন্টের পরিচয় সনাক্তকরণ
+app.UseAuthorization();   // শনাক্তকৃত ইউজারের নির্দিষ্ট মেথড অ্যাক্সেসের অধিকার যাচাই
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
+// এন্ডপয়েন্ট হিসেবে সকল API কন্ট্রোলার রাউটিং ম্যাপ করা
+app.MapControllers();
 
+// অ্যাপ্লিকেশন চালুকরণ
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

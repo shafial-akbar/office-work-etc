@@ -54,6 +54,15 @@
         public const string Credit = "Credit";
     }
 
+    public static class TranLogRequestType
+    {
+        public const string TopUp = "TopUp";
+        public const string TollDeduction = "TollDeduction";
+        public const string TollReverse = "TollReverse";
+        public const string Reconcile = "Reconcile";
+        public const string AccountInquiry = "AccountInquiry";
+    }
+
     public static class SourceChannel
     {
         public const string SPG = "SPG";

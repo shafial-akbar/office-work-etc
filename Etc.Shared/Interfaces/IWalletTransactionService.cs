@@ -17,6 +17,9 @@ namespace Etc.Shared.Interfaces
         Task<DoTransactionResponse> ReverseTollAsync(DoTransactionRequest reversalDto);
 
         // ৪. ওয়ালেটের বর্তমান ব্যালেন্স চেক
-        Task<decimal> GetBalanceAsync(string walletNo);
+        Task<List<WalletBalanceResultDto>> GetWalletBalanceAsync(string searchKey);
+
+        // 5. Reconcile
+        Task<ReconcileTransactionResponse> ReconcileTransactionAsync(ReconcileTransactionRequest request);
     }
 }

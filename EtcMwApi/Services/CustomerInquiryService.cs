@@ -60,6 +60,27 @@ namespace EtcMwApi.Services
             };
         }
 
+        // নতুন মেথড: মোবাইল নম্বর বা ওয়ালেট নম্বর দিয়ে ব্যালেন্স চেক
+        public async Task<List<WalletBalanceResultDto>> GetWalletBalanceAsync(string searchKey)
+        {
+            if (string.IsNullOrWhiteSpace(searchKey))
+            {
+                return new List<WalletBalanceResultDto>();
+            }
+
+            return await _context.Wallets
+                .AsNoTracking()
+                .Where(w => w.Status == WalletStatus.Active &&
+                           (w.MobileNo == searchKey || w.WalletNo == searchKey))
+                .Select(w => new WalletBalanceResultDto
+                {
+                    WalletNo = w.WalletNo,
+                    Balance = w.Balance,
+                    Currency = w.Currency
+                })
+                .ToListAsync();
+        }
+
         private static WalletSummaryDto MapToWalletDto(Wallet wallet)
         {
             return new WalletSummaryDto
