@@ -15,7 +15,9 @@ namespace ETCGatewayAPI.Services
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ILogger<WalletTransactionService> _logger;
 
-        public WalletTransactionService(ApplicationDbContext context, ILogger<WalletTransactionService> logger)
+        public WalletTransactionService(DatabaseContext context,
+                           IHttpContextAccessor httpContextAccessor,
+                           ILogger<WalletTransactionService> logger)
         {
             _context = context;
             _httpContextAccessor = httpContextAccessor;
