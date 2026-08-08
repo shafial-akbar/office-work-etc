@@ -8,18 +8,15 @@ namespace Etc.Shared.Interfaces
     public interface IWalletTransactionService
     {
         // ১. ওয়ালেট টপ-আপ (Wallet Credit)
-        Task<DoTransactionResponse> TopUpWalletAsync(DoTransactionRequest topUpDto);
+        Task<TopUpResponse> TopUpWalletAsync(TopUpRequest topUpDto);
 
         // ২. টোল কালেকশন ও ব্যালেন্স কাটা (Toll Amount Debit/Deduction)
         Task<DoTransactionResponse> DeductTollAsync(DoTransactionRequest deductionDto);
 
         // ৩. টোল ট্রানজেকশন রিভার্সাল বা রিফান্ড (Toll Amount Reversal/Credit)
-        Task<DoTransactionResponse> ReverseTollAsync(DoTransactionRequest reversalDto);
+        Task<DoTransactionResponse> ReverseTollAsync(ReverseTransactionRequest reversalDto);
 
-        // ৪. ওয়ালেটের বর্তমান ব্যালেন্স চেক
-        Task<List<WalletBalanceResultDto>> GetWalletBalanceAsync(string searchKey);
-
-        // 5. Reconcile
-        Task<ReconcileTransactionResponse> ReconcileTransactionAsync(ReconcileTransactionRequest request);
+        // 4. Reconcile
+        Task<ReconcileTransactionResponse> ReconcileTransactionAsync(ReconcileTransactionRequest ReconcileDto);
     }
 }

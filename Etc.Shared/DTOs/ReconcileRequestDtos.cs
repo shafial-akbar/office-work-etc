@@ -9,10 +9,11 @@ namespace Etc.Shared.DTOs
 {
     public class ReconcileTransactionRequest
     {
-        [Required(ErrorMessage = "PartnerTxnId is required.")]
-        public string PartnerTxnId { get; set; } = string.Empty;
+        // টোল অথরিটি শুধু এটি পাঠাবে: { "partnerTxnId": "TXN_12345" }
+        public string? PartnerTxnId { get; set; }
 
-        public string? PartnerId { get; set; }
+        // এসবিএল চ্যানেলগুলো শুধু এটি পাঠাবে: { "referenceId": "REF_67890" }
+        public string? ReferenceId { get; set; }
     }
 
     public class ReconcileTransactionResponse
@@ -26,10 +27,12 @@ namespace Etc.Shared.DTOs
     public class ReconcileResultBody
     {
         public string PartnerTxnId { get; set; } = string.Empty;
-        public string BankTxnId { get; set; } = string.Empty;
-        public string ReconStatus { get; set; } = string.Empty; // SUCCESS, FAILED, NOT_FOUND, PENDING
-        public decimal TransactionAmount { get; set; }
+        public string ReferenceId { get; set; } = string.Empty;
+        public string WalletNo { get; set; } = string.Empty;
         public string PartnerId { get; set; } = string.Empty;
+        public string BankTxnId { get; set; } = string.Empty;
+        public string ReconStatus { get; set; } = string.Empty;
+        public decimal TransactionAmount { get; set; }
         public string SourceAccountNo { get; set; } = string.Empty;
         public string TranMode { get; set; } = string.Empty;
         public DateTime? TransactionDate { get; set; }

@@ -18,7 +18,7 @@ namespace Etc.Shared.Models
         public string PartnerTxnId { get; set; } = string.Empty;
 
         [Required]
-        public string PartnerTransactionDate { get; set; } = string.Empty;
+        public DateTime PartnerTransactionDate { get; set; }
 
         [Required]
         public string SourceAccountNo { get; set; } = string.Empty;
@@ -42,6 +42,9 @@ namespace Etc.Shared.Models
         public string? RefNo5 { get; set; }
 
         [Required]
+        public DateTime ChannelTransactionDate { get; set; }
+
+        [Required]
         public string BankTxnId { get; set; } = string.Empty;
 
         [Required]
@@ -55,6 +58,8 @@ namespace Etc.Shared.Models
         public string? SettlStatus { get; set; }
 
         public DateTime? SettlDate { get; set; }
+
+        public string? BatchProcessId { get; set; }
 
         [Required]
         [RegularExpression("^(Debit|Credit)$", ErrorMessage = "Invalid TranMode. Allowed values are: Debit, Credit")]

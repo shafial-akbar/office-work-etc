@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Etc.Shared\Etc.Shared.csproj" />
+    <ProjectReference Include="..\EtcMwApi\EtcMwApi.csproj" />
   </ItemGroup>
 
 </Project>

@@ -6,819 +6,220 @@ using Microsoft.EntityFrameworkCore;
 using Etc.Shared.Constants;
 using Microsoft.AspNetCore.Http;
 using System.Text.Json;
-using Microsoft.AspNetCore.Razor.TagHelpers;
+using Microsoft.Extensions.Logging;
+using Etc.Shared.Helpers;
 
 namespace ETCGatewayAPI.Services
 {
-    public class WalletTransactionService : IWalletTransactionService
+    public class SettlementService : ISettlementService
     {
-
         private readonly DatabaseContext _context;
         private readonly IHttpContextAccessor _httpContextAccessor;
-        private readonly ILogger<WalletTransactionService> _logger;
+        private readonly ILogger<SettlementService> _logger;
 
-        public WalletTransactionService(DatabaseContext context,
-                           IHttpContextAccessor httpContextAccessor,
-                           ILogger<WalletTransactionService> logger)
+        public SettlementService(DatabaseContext context,
+                               IHttpContextAccessor httpContextAccessor,
+                               ILogger<SettlementService> logger)
         {
             _context = context;
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
         }
 
-        // ১. ওয়ালেট টপ-আপ (Wallet Credit)
-        public async Task<DoTransactionResponse> TopUpWalletAsync(DoTransactionRequest request)
+        public async Task<SettlementReportResponse> GetSettlementReportAsync(SettlementReportRequest request)
         {
-            using var dbTransaction = await _context.Database.BeginTransactionAsync();
-            var requestTime = DateTime.UtcNow;
-
             try
             {
-                // ১. ওয়ালেট ভ্যালিডেশন
-                var wallet = await _context.Wallets
-                    .FirstOrDefaultAsync(w => w.WalletNo == request.PartnerId && w.Status == WalletStatus.Active);
-
-                if (wallet == null)
-                {
-                    _logger.LogWarning("TopUp Failed: Active wallet not found for WalletNo/PartnerId: {PartnerId}", request.PartnerId);
-
-                    var notFoundResponse = new DoTransactionResponse
-                    {
-                        HttpCode = 404,
-                        HttpStatus = "Not Found",
-                        Message = "Active wallet record not found for the provided PartnerId."
-                    };
-
-                    await SaveTransactionLogAsync(
-                        request: request,
-                        response: notFoundResponse,
-                        requestTime: requestTime,
-                        status: "Failed",
-                        requestType: TranLogRequestType.TopUp,
-                        tranMode: TranMode.Credit
-                    );
-
-                    return notFoundResponse;
-                }
-
-                // অডিটের জন্য ট্রানজেকশনের আগের ব্যালেন্স সংরক্ষণ
-                decimal balanceBefore = wallet.Balance;
-
-                // ২. ট্রানজেকশন এন্ট্রি তৈরি
-                var transaction = new DoTransaction
-                {
-                    Id = Guid.NewGuid(),
-                    PartnerId = request.PartnerId,
-                    PartnerTxnId = request.PartnerTxnId,
-                    PartnerTransactionDate = request.PartnerTransactionDate,
-                    SourceAccountNo = request.SourceAccountNo,
-                    TransactionAmount = request.TransactionAmount,
-                    RefNo1 = request.RefNo1,
-                    RefNo2 = request.RefNo2,
-                    RefNo3 = request.RefNo3,
-                    RefNo4 = request.RefNo4,
-                    RefNo5 = request.RefNo5,
-                    TranMode = TranMode.Credit,
-                    SourceChannel = request.SourceChannel,
-                    BankTxnDate = DateTime.UtcNow,
-                    TranStatus = TranStatus.Success,
-                    SettlStatus = SettlementStatus.Pending,
-                    ResponseCode = "200",
-                    ResponseMessage = "Success"
-                };
-
-                await _context.DoTransactions.AddAsync(transaction);
-
-                // ৩. ওয়ালেট ব্যালেন্স আপডেট
-                wallet.Balance += request.TransactionAmount;
-                wallet.UpdatedAt = DateTime.UtcNow;
-
-                decimal balanceAfter = wallet.Balance;
-
-                // ৪. সফল রেসপন্স অবজেক্ট তৈরি
-                var successResponse = new DoTransactionResponse
-                {
-                    HttpCode = 200,
-                    HttpStatus = "OK",
-                    Message = "Transaction processed and wallet updated successfully.",
-                    Body = new TransactionResultBody
-                    {
-                        BankTxnId = transaction.BankTxnId,
-                        PartnerTxnId = transaction.PartnerTxnId,
-                        TranStatus = transaction.TranStatus,
-                        TransactionAmount = transaction.TransactionAmount
-                    }
-                };
-
-                // ৫. SaveTransactionLogAsync কল করা (ডাইনামিক requestType ও tranMode সহ)
-                await SaveTransactionLogAsync(
-                    request: request,
-                    response: successResponse,
-                    requestTime: requestTime,
-                    status: "Success",
-                    requestType: TranLogRequestType.TopUp,
-                    tranMode: TranMode.Credit,
-                    sblTxnId: transaction.BankTxnId,
-                    balanceBefore: balanceBefore,
-                    balanceAfter: balanceAfter
-                );
-
-                // ৬. ডাটাবেজ সেভ ও ট্রানজেকশন কমিট
-                await _context.SaveChangesAsync();
-                await dbTransaction.CommitAsync();
-
-                await _context.Entry(transaction).ReloadAsync();
-
-                _logger.LogInformation("TopUp successful. BankTxnId: {BankTxnId}, New Balance: {Balance}", transaction.BankTxnId, wallet.Balance);
-
-                return successResponse;
-            }
-            catch (Exception ex)
-            {
-                await dbTransaction.RollbackAsync();
-                _logger.LogError(ex, "Error occurred during TopUpWallet for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
-
-                var errorResponse = new DoTransactionResponse
-                {
-                    HttpCode = 500,
-                    HttpStatus = "Internal Server Error",
-                    Message = "An error occurred while processing the wallet transaction."
-                };
-
-                await SaveTransactionLogAsync(
-                    request: request,
-                    response: errorResponse,
-                    requestTime: requestTime,
-                    status: "Failed",
-                    requestType: TranLogRequestType.TopUp,
-                    tranMode: TranMode.Credit,
-                    errorMessage: ex.Message
-                );
-
-                return errorResponse;
-            }
-        }
-
-        // ২. টোল কালেকশন ও ব্যালেন্স কাটা (Toll Amount Debit/Deduction)
-        public async Task<DoTransactionResponse> DeductTollAsync(DoTransactionRequest request)
-        {
-            using var dbTransaction = await _context.Database.BeginTransactionAsync();
-            var requestTime = DateTime.UtcNow;
-
-            try
-            {
-                // ১. ওয়ালেট ভ্যালিডেশন
-                var wallet = await _context.Wallets
-                    .FirstOrDefaultAsync(w => w.WalletNo == request.PartnerId && w.Status == WalletStatus.Active);
-
-                if (wallet == null)
-                {
-                    _logger.LogWarning("Deduction Failed: Active wallet not found for PartnerId: {PartnerId}", request.PartnerId);
-
-                    var notFoundResponse = new DoTransactionResponse
-                    {
-                        HttpCode = 404,
-                        HttpStatus = "Not Found",
-                        Message = "Active wallet not found."
-                    };
-
-                    await SaveTransactionLogAsync(
-                        request: request,
-                        response: notFoundResponse,
-                        requestTime: requestTime,
-                        status: "Failed",
-                        requestType: TranLogRequestType.TollDeduction,
-                        tranMode: TranMode.Debit
-                    );
-
-                    return notFoundResponse;
-                }
-
-                // অডিটের জন্য ট্রানজেকশনের আগের ব্যালেন্স সংরক্ষণ
-                decimal balanceBefore = wallet.Balance;
-
-                // পর্যাপ্ত ব্যালেন্স আছে কিনা চেক
-                if (wallet.Balance < request.TransactionAmount)
-                {
-                    _logger.LogWarning("Deduction Failed: Insufficient balance for WalletNo: {PartnerId}. Current: {Balance}, Required: {Amount}",
-                        request.PartnerId, wallet.Balance, request.TransactionAmount);
-
-                    var insufficientBalanceResponse = new DoTransactionResponse
-                    {
-                        HttpCode = 400,
-                        HttpStatus = "Bad Request",
-                        Message = "Insufficient balance in wallet."
-                    };
-
-                    await SaveTransactionLogAsync(
-                        request: request,
-                        response: insufficientBalanceResponse,
-                        requestTime: requestTime,
-                        status: "Failed",
-                        requestType: TranLogRequestType.TollDeduction,
-                        tranMode: TranMode.Debit,
-                        balanceBefore: balanceBefore
-                    );
-
-                    return insufficientBalanceResponse;
-                }
-
-                // ২. ট্রানজেকশন এন্ট্রি তৈরি
-                var transaction = new DoTransaction
-                {
-                    Id = Guid.NewGuid(),
-                    PartnerId = request.PartnerId,
-                    PartnerTxnId = request.PartnerTxnId,
-                    PartnerTransactionDate = request.PartnerTransactionDate,
-                    SourceAccountNo = request.SourceAccountNo,
-                    TransactionAmount = request.TransactionAmount,
-                    RefNo1 = request.RefNo1,
-                    RefNo2 = request.RefNo2,
-                    RefNo3 = request.RefNo3,
-                    RefNo4 = request.RefNo4,
-                    RefNo5 = request.RefNo5,
-                    TranMode = TranMode.Debit,
-                    SourceChannel = request.SourceChannel,
-                    BankTxnDate = DateTime.UtcNow,
-                    TranStatus = TranStatus.Success,
-                    SettlStatus = SettlementStatus.Pending,
-                    ResponseCode = "200",
-                    ResponseMessage = "Success"
-                };
-
-                await _context.DoTransactions.AddAsync(transaction);
-
-                // ৩. ব্যালেন্স ডিডাক্ট
-                wallet.Balance -= request.TransactionAmount;
-                wallet.UpdatedAt = DateTime.UtcNow;
-
-                decimal balanceAfter = wallet.Balance;
-
-                // ৪. সফল রেসপন্স অবজেক্ট তৈরি
-                var successResponse = new DoTransactionResponse
-                {
-                    HttpCode = 200,
-                    HttpStatus = "OK",
-                    Message = "Toll amount deducted successfully.",
-                    Body = new TransactionResultBody
-                    {
-                        BankTxnId = transaction.BankTxnId,
-                        PartnerTxnId = transaction.PartnerTxnId,
-                        TranStatus = transaction.TranStatus,
-                        TransactionAmount = transaction.TransactionAmount
-                    }
-                };
-
-                // ৫. SaveTransactionLogAsync কল করা (Deduction & Debit সহ)
-                await SaveTransactionLogAsync(
-                    request: request,
-                    response: successResponse,
-                    requestTime: requestTime,
-                    status: "Success",
-                    requestType: TranLogRequestType.TollDeduction,
-                    tranMode: TranMode.Debit,
-                    sblTxnId: transaction.BankTxnId,
-                    balanceBefore: balanceBefore,
-                    balanceAfter: balanceAfter
-                );
-
-                // ৬. ডাটাবেজ সেভ ও ট্রানজেকশন কমিট
-                await _context.SaveChangesAsync();
-                await dbTransaction.CommitAsync();
-
-                await _context.Entry(transaction).ReloadAsync();
-
-                _logger.LogInformation("Toll Deduction successful. BankTxnId: {BankTxnId}, Remaining Balance: {Balance}", transaction.BankTxnId, wallet.Balance);
-
-                return successResponse;
-            }
-            catch (Exception ex)
-            {
-                await dbTransaction.RollbackAsync();
-                _logger.LogError(ex, "Error occurred during DeductToll for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
-
-                var errorResponse = new DoTransactionResponse
-                {
-                    HttpCode = 500,
-                    HttpStatus = "Internal Server Error",
-                    Message = "An error occurred while deducting toll amount."
-                };
-
-                await SaveTransactionLogAsync(
-                    request: request,
-                    response: errorResponse,
-                    requestTime: requestTime,
-                    status: "Failed",
-                    requestType: TranLogRequestType.TollDeduction,
-                    tranMode: TranMode.Debit,
-                    errorMessage: ex.Message
-                );
-
-                return errorResponse;
-            }
-        }
-
-        // ৩. টোল ট্রানজেকশন রিভার্সাল বা রিফান্ড (Toll Amount Reversal/Credit)
-        public async Task<DoTransactionResponse> ReverseTollAsync(DoTransactionRequest request)
-        {
-            using var dbTransaction = await _context.Database.BeginTransactionAsync();
-            var requestTime = DateTime.UtcNow;
-
-            try
-            {
-                // ১. পূর্বে করা মূল ট্রানজেকশনটি যাচাই (PartnerTxnId দিয়ে)
-                var originalTxn = await _context.DoTransactions
-                    .FirstOrDefaultAsync(t => t.PartnerTxnId == request.PartnerTxnId && t.TranStatus == TranStatus.Success);
-
-                if (originalTxn == null)
-                {
-                    _logger.LogWarning("Reversal Failed: Original transaction not found for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
-
-                    var notFoundTxnResponse = new DoTransactionResponse
-                    {
-                        HttpCode = 404,
-                        HttpStatus = "Not Found",
-                        Message = "Original transaction not found to reverse."
-                    };
-
-                    await SaveTransactionLogAsync(
-                        request: request,
-                        response: notFoundTxnResponse,
-                        requestTime: requestTime,
-                        status: "Failed",
-                        requestType: TranLogRequestType.TollReverse,
-                        tranMode: TranMode.Credit
-                    );
-
-                    return notFoundTxnResponse;
-                }
-
-                // ২. ওয়ালেট ভ্যালিডেশন
-                var wallet = await _context.Wallets
-                    .FirstOrDefaultAsync(w => w.WalletNo == request.PartnerId && w.Status == WalletStatus.Active);
-
-                if (wallet == null)
-                {
-                    _logger.LogWarning("Reversal Failed: Active wallet not found for PartnerId: {PartnerId}", request.PartnerId);
-
-                    var notFoundWalletResponse = new DoTransactionResponse
-                    {
-                        HttpCode = 404,
-                        HttpStatus = "Not Found",
-                        Message = "Active wallet not found."
-                    };
-
-                    await SaveTransactionLogAsync(
-                        request: request,
-                        response: notFoundWalletResponse,
-                        requestTime: requestTime,
-                        status: "Failed",
-                        requestType: TranLogRequestType.TollReverse,
-                        tranMode: TranMode.Credit
-                    );
-
-                    return notFoundWalletResponse;
-                }
-
-                // অডিটের জন্য ট্রানজেকশনের আগের ব্যালেন্স সংরক্ষণ
-                decimal balanceBefore = wallet.Balance;
-
-                // ৩. রিভার্সাল ট্রানজেকশন এন্ট্রি তৈরি
-                var reversalTransaction = new DoTransaction
-                {
-                    Id = Guid.NewGuid(),
-                    PartnerId = request.PartnerId,
-                    PartnerTxnId = $"REV_{request.PartnerTxnId}",
-                    PartnerTransactionDate = request.PartnerTransactionDate,
-                    SourceAccountNo = request.SourceAccountNo,
-                    TransactionAmount = request.TransactionAmount,
-                    RefNo1 = request.PartnerTxnId, // মূল ট্রানজেকশন রেফারেন্স
-                    RefNo2 = request.RefNo2,
-                    RefNo3 = request.RefNo3,
-                    RefNo4 = request.RefNo4,
-                    RefNo5 = request.RefNo5,
-                    TranMode = TranMode.Credit, // রিভার্সালের ফলে ক্রেডিট হবে
-                    SourceChannel = request.SourceChannel,
-                    BankTxnDate = DateTime.UtcNow,
-                    TranStatus = TranStatus.Success,
-                    SettlStatus = SettlementStatus.Pending,
-                    ResponseCode = "200",
-                    ResponseMessage = "Reversal Success"
-                };
-
-                await _context.DoTransactions.AddAsync(reversalTransaction);
-
-                // ৪. ওয়ালেটে ব্যালেন্স রিফান্ড/ক্রেডিট
-                wallet.Balance += request.TransactionAmount;
-                wallet.UpdatedAt = DateTime.UtcNow;
-
-                decimal balanceAfter = wallet.Balance;
-
-                // ৫. সফল রেসপন্স অবজেক্ট তৈরি
-                var successResponse = new DoTransactionResponse
-                {
-                    HttpCode = 200,
-                    HttpStatus = "OK",
-                    Message = "Transaction reversed and balance refunded successfully.",
-                    Body = new TransactionResultBody
-                    {
-                        BankTxnId = reversalTransaction.BankTxnId,
-                        PartnerTxnId = reversalTransaction.PartnerTxnId,
-                        TranStatus = reversalTransaction.TranStatus,
-                        TransactionAmount = reversalTransaction.TransactionAmount
-                    }
-                };
-
-                // ৬. SaveTransactionLogAsync কল করা (TollReverse & Credit সহ)
-                await SaveTransactionLogAsync(
-                    request: request,
-                    response: successResponse,
-                    requestTime: requestTime,
-                    status: "Success",
-                    requestType: TranLogRequestType.TollReverse,
-                    tranMode: TranMode.Credit,
-                    sblTxnId: reversalTransaction.BankTxnId,
-                    balanceBefore: balanceBefore,
-                    balanceAfter: balanceAfter
-                );
-
-                // ৭. ডাটাবেজ সেভ ও ট্রানজেকশন কমিট
-                await _context.SaveChangesAsync();
-                await dbTransaction.CommitAsync();
-
-                await _context.Entry(reversalTransaction).ReloadAsync();
-
-                _logger.LogInformation("Reversal successful. BankTxnId: {BankTxnId}, Updated Balance: {Balance}", reversalTransaction.BankTxnId, wallet.Balance);
-
-                return successResponse;
-            }
-            catch (Exception ex)
-            {
-                await dbTransaction.RollbackAsync();
-                _logger.LogError(ex, "Error occurred during Reversal for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
-
-                var errorResponse = new DoTransactionResponse
-                {
-                    HttpCode = 500,
-                    HttpStatus = "Internal Server Error",
-                    Message = "An error occurred while processing the transaction reversal."
-                };
-
-                await SaveTransactionLogAsync(
-                    request: request,
-                    response: errorResponse,
-                    requestTime: requestTime,
-                    status: "Failed",
-                    requestType: TranLogRequestType.TollReverse,
-                    tranMode: TranMode.Credit,
-                    errorMessage: ex.Message
-                );
-
-                return errorResponse;
-            }
-        }
-
-        // ৪. ওয়ালেটের বর্তমান ব্যালেন্স চেক (check by Mobile No or Wallet No)
-        public async Task<List<WalletBalanceResultDto>> GetWalletBalanceAsync(string searchKey)
-        {
-            var requestTime = DateTime.UtcNow;
-
-            // ১. খালি/ইনভ্যালিড সার্চ কি-এর ক্ষেত্রে অডিট লগ ও রেসপন্স
-            if (string.IsNullOrWhiteSpace(searchKey))
-            {
-                var emptyResponse = new List<WalletBalanceResultDto>();
-
-                await SaveInquiryTransactionLogAsync(
-                    searchKey: searchKey,
-                    response: emptyResponse,
-                    requestTime: requestTime,
-                    status: "Failed",
-                    errorMessage: "Search key cannot be null or empty."
-                );
-
-                return emptyResponse;
-            }
-
-            try
-            {
-                // ২. রিড-ওনলি ডাটাবেজ কোয়েরি
-                var result = await _context.Wallets
+                // ১. বেস কুয়েরি: Success স্ট্যাটাস এবং BankTxnDate ফিল্টারিং
+                var query = _context.DoTransactions
                     .AsNoTracking()
-                    .Where(w => w.Status == WalletStatus.Active &&
-                               (w.MobileNo == searchKey || w.WalletNo == searchKey))
-                    .Select(w => new WalletBalanceResultDto
+                    .Where(t => t.TranStatus == TranStatus.Success
+                             && t.BankTxnDate >= request.FromDate
+                             && t.BankTxnDate <= request.ToDate);
+
+                // ২. TranMode ফিল্টার (Debit/Credit)
+                if (!string.IsNullOrWhiteSpace(request.TranMode))
+                {
+                    query = query.Where(t => t.TranMode.Equals(request.TranMode, StringComparison.OrdinalIgnoreCase));
+                }
+
+                // ৩. SourceChannel ফিল্টার: শুধুমাত্র Credit Mode এর জন্য এবং যদি রিকোয়েস্টে পাঠানো হয়
+                bool isCreditMode = !string.IsNullOrWhiteSpace(request.TranMode) &&
+                                     request.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase);
+
+                if (isCreditMode && !string.IsNullOrWhiteSpace(request.SourceChannel))
+                {
+                    query = query.Where(t => t.SourceChannel.Equals(request.SourceChannel, StringComparison.OrdinalIgnoreCase));
+                }
+
+                // ৪. TranMode অনুযায়ী Conditional Mapping (Credit vs Debit)
+                var details = await query
+                    .OrderByDescending(t => t.BankTxnDate)
+                    .Select(t => new SettlementDetailDto
                     {
-                        WalletNo = w.WalletNo,
-                        Balance = w.Balance,
-                        Currency = w.Currency
+                        Id = t.Id,
+                        BankTxnId = t.BankTxnId,
+                        BankTxnDate = t.BankTxnDate,
+                        SourceAccountNo = t.SourceAccountNo,
+                        TransactionAmount = t.TransactionAmount,
+                        TranMode = t.TranMode,
+                        SourceChannel = t.SourceChannel,
+                        SettlStatus = t.SettlStatus,
+
+                        // Debit Mode হলে PartnerId ও PartnerTxnId আনবে, নাহলে null
+                        PartnerId = t.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase) ? t.PartnerId : null,
+                        PartnerTxnId = t.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase) ? t.PartnerTxnId : null,
+
+                        // Credit Mode হলে RefNo1 ও ChannelTransactionDate আনবে, নাহলে null
+                        RefNo1 = t.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase) ? t.RefNo1 : null,
+                        ChannelTransactionDate = t.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase) ? t.ChannelTransactionDate : null
                     })
                     .ToListAsync();
 
-                // ৩. ইনকোয়ারি সফল হলে TransactionLog সেভ
-                await SaveInquiryTransactionLogAsync(
-                    searchKey: searchKey,
-                    response: result,
-                    requestTime: requestTime,
-                    status: "Success",
-                    accountNo: result.FirstOrDefault()?.WalletNo
-                );
+                // ৫. Summary হিসাব করা
+                var summary = new SettlementSummaryDto
+                {
+                    TotalTransactions = details.Count,
+                    TotalAmount = details.Sum(d => d.TransactionAmount),
+                    FromDate = request.FromDate,
+                    ToDate = request.ToDate,
+                    FilteredTranMode = !string.IsNullOrWhiteSpace(request.TranMode) ? request.TranMode.ToUpper() : "ALL"
+                };
 
-                return result;
+                return new SettlementReportResponse
+                {
+                    Summary = summary,
+                    Details = details
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred during GetWalletBalanceAsync for searchKey: {SearchKey}", searchKey);
-
-                var errorResponse = new List<WalletBalanceResultDto>();
-
-                await SaveInquiryTransactionLogAsync(
-                    searchKey: searchKey,
-                    response: errorResponse,
-                    requestTime: requestTime,
-                    status: "Failed",
-                    errorMessage: ex.Message
-                );
-
-                return errorResponse;
+                _logger.LogError(ex, "Error generating settlement report for Date Range: {FromDate} to {ToDate}", request.FromDate, request.ToDate);
+                throw;
             }
         }
 
-        // 5. ট্রানজেকশন রিকনসিলিয়েশন (Reconciliation & Idempotency Audit)
-        public async Task<ReconcileTransactionResponse> ReconcileTransactionAsync(ReconcileTransactionRequest request)
+        public async Task<SettlementResponse> DoSettlementAsync(SettlementRequest request)
         {
-            var requestTime = DateTime.UtcNow;
-
-            // ১. ভ্যালিডেশন
-            if (string.IsNullOrWhiteSpace(request.PartnerTxnId))
-            {
-                return new ReconcileTransactionResponse
-                {
-                    HttpCode = 400,
-                    HttpStatus = "Bad Request",
-                    Message = "PartnerTxnId cannot be null or empty."
-                };
-            }
+            using var dbTransaction = await _context.Database.BeginTransactionAsync();
 
             try
             {
-                // ২. Primary Check: DoTransactions টেবিলে সফল বা প্রসেসড রেকর্ড খোঁজা
-                var transaction = await _context.DoTransactions
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(t => t.PartnerTxnId == request.PartnerTxnId);
+                // ১. রিকোয়েস্টের BankTxnDate পার্স করা
+                DateTime targetBankTxnDate = DateTimeHelper.ParseToDateTime(request.BankTxnDate);
 
-                // Case : ডাটাবেজে সফলভাবে এক্সিকিউট ও সেভ হয়েছিল (Response Lost / Drop Case)
-                if (transaction != null)
+                // ২. প্রারম্ভিক চেক: উক্ত তারিখ ও অপারেশনের জন্য ইতোমধ্যে সেটেলমেন্ট করা হয়েছে কিনা
+                bool isAlreadySettled = await _context.Settlements
+                    .AnyAsync(s => s.BankTxnDate.Date == targetBankTxnDate.Date
+                                && s.SettlementOperation.Equals(request.SettlementOperation, StringComparison.OrdinalIgnoreCase)
+                                && (s.Status == "COMPLETED" || s.Status == "PROCESSING"));
+
+                if (isAlreadySettled)
                 {
-                    var successReconResponse = new ReconcileTransactionResponse
+                    return new SettlementResponse
                     {
-                        HttpCode = 200,
-                        HttpStatus = "OK",
-                        Message = "Transaction record found in primary database.",
-                        Body = new ReconcileResultBody
-                        {
-                            PartnerTxnId = transaction.PartnerTxnId,
-                            BankTxnId = transaction.BankTxnId,
-                            ReconStatus = transaction.TranStatus.Equals(TranStatus.Success, StringComparison.OrdinalIgnoreCase)
-                                ? TranStatus.Success
-                                : TranStatus.Failed,
-                            TransactionAmount = transaction.TransactionAmount,
-                            PartnerId = transaction.PartnerId,
-                            SourceAccountNo = transaction.SourceAccountNo,
-                            TranMode = transaction.TranMode,
-                            TransactionDate = transaction.BankTxnDate
-                        }
+                        HttpCode = 409,
+                        HttpStatus = "Conflict",
+                        Message = $"Settlement has already been processed or is currently in progress for {request.SettlementOperation} on {targetBankTxnDate:yyyy-MM-dd}."
                     };
-
-                    // আপনার বিদ্যমান SaveTransactionLogAsync ব্যবহার করে অডিট লগ সেভ
-                    await SaveTransactionLogAsync(
-                        request: new DoTransactionRequest
-                        {
-                            PartnerId = transaction.PartnerId,
-                            PartnerTxnId = transaction.PartnerTxnId,
-                            SourceAccountNo = transaction.SourceAccountNo,
-                            TransactionAmount = transaction.TransactionAmount
-                        },
-                        response: new DoTransactionResponse
-                        {
-                            HttpCode = successReconResponse.HttpCode,
-                            HttpStatus = successReconResponse.HttpStatus,
-                            Message = successReconResponse.Message
-                        },
-                        requestTime: requestTime,
-                        status : "Success",
-                        requestType: TranLogRequestType.Reconcile,
-                        tranMode: transaction.TranMode,
-                        sblTxnId: transaction.PartnerId
-                    );
-
-                    return successReconResponse;
                 }
 
-                // ৩. Secondary Check: TransactionLogs টেবিলে টেকনিক্যাল ফেলিউর রেকর্ড চেক (Case 3)
-                var failedLog = await _context.TransactionLogs
-                    .AsNoTracking()
-                    .Where(l => l.PartnerTxnId == request.PartnerTxnId)
-                    .OrderByDescending(l => l.RequestTimestamp)
-                    .FirstOrDefaultAsync();
+                // ৩. ইউনিক BatchProcessId তৈরি করা
+                string batchProcessId = $"{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(100, 999)}";
 
-                // Case : রিকোয়েস্ট API-তে এসেছিল কিন্তু ভ্যালিডেশন/ডাটাবেজ এররে ফেল করেছিল
-                if (failedLog != null)
+                // ৪. SettlementOperation অনুযায়ী TranMode নির্ধারণ ও DoTransactions ফিল্টারিং
+                string targetTranMode = request.SettlementOperation.Equals(SettlementOperation.Toll, StringComparison.OrdinalIgnoreCase)
+                    ? TranMode.Debit
+                    : TranMode.Credit;
+
+                var transactionsToSettle = await _context.DoTransactions
+                    .Where(t => t.BankTxnDate.Date == targetBankTxnDate.Date
+                             && t.TranMode.Equals(targetTranMode, StringComparison.OrdinalIgnoreCase)
+                             && t.TranStatus == TranStatus.Success
+                             && t.SettlStatus == SettlementStatus.Pending)
+                    .ToListAsync();
+
+                if (!transactionsToSettle.Any())
                 {
-                    var failedReconResponse = new ReconcileTransactionResponse
+                    return new SettlementResponse
                     {
-                        HttpCode = 200,
-                        HttpStatus = "OK",
-                        Message = "Transaction attempted but failed during execution.",
-                        Body = new ReconcileResultBody
-                        {
-                            PartnerTxnId = request.PartnerTxnId,
-                            BankTxnId = failedLog.SblTxnId ?? string.Empty,
-                            ReconStatus = TranStatus.Failed,
-                            TransactionAmount = failedLog.TransactionAmount ?? 0,
-                            PartnerId = failedLog.PartnerId ?? request.PartnerId ?? string.Empty,
-                            SourceAccountNo = failedLog.AccountNo ?? string.Empty,
-                            TranMode = failedLog.TranMode ?? string.Empty,
-                            TransactionDate = failedLog.RequestTimestamp
-                        }
+                        HttpCode = 404,
+                        HttpStatus = "Not Found",
+                        Message = $"No pending {request.SettlementOperation} transactions found for settlement on {targetBankTxnDate:yyyy-MM-dd}."
                     };
-
-                    await SaveTransactionLogAsync(
-                        request: new DoTransactionRequest
-                        {
-                            PartnerId = failedLog.PartnerId ?? request.PartnerId ?? string.Empty,
-                            PartnerTxnId = request.PartnerTxnId,
-                            SourceAccountNo = failedLog.AccountNo ?? string.Empty,
-                            TransactionAmount = failedLog.TransactionAmount ?? 0
-                        },
-                        response: new DoTransactionResponse
-                        {
-                            HttpCode = failedReconResponse.HttpCode,
-                            HttpStatus = failedReconResponse.HttpStatus,
-                            Message = failedReconResponse.Message
-                        },
-                        requestTime: requestTime,
-                        status: "Success",
-                        requestType: TranLogRequestType.Reconcile,
-                        tranMode: transaction.TranMode,
-                        sblTxnId: transaction.PartnerId
-                    );
-
-                    return failedReconResponse;
                 }
 
-                // Case : নেটওয়ার্ক সমস্যার কারণে রিকোয়েস্ট API পর্যন্ত পৌঁছায়নি (Not Found)
-                var notFoundResponse = new ReconcileTransactionResponse
+                // ৫. DoTransactions টেবিলে BatchProcessId এবং SettlStatus, SettlDate আপডেট
+                DateTime settlDate = DateTime.UtcNow;
+                decimal totalAmount = transactionsToSettle.Sum(x => x.TransactionAmount);
+
+                foreach (var txn in transactionsToSettle)
                 {
-                    HttpCode = 404,
-                    HttpStatus = "Not Found",
-                    Message = "No transaction record found with the provided PartnerTxnId.",
-                    Body = new ReconcileResultBody
-                    {
-                        PartnerTxnId = request.PartnerTxnId,
-                        BankTxnId = string.Empty,
-                        ReconStatus = "NOT_FOUND",
-                        TransactionAmount = 0,
-                        PartnerId = request.PartnerId ?? string.Empty
-                    }
+                    txn.BatchProcessId = batchProcessId;
+                    txn.SettlStatus = SettlementStatus.Settled;
+                    txn.SettlDate = settlDate;
+                }
+
+                // ৬. SettlementOperation = Toll হলে CBS API কল (Placeholder)
+                if (request.SettlementOperation.Equals(SettlementOperation.Toll, StringComparison.OrdinalIgnoreCase))
+                {
+                    await SendToCbsAsync(totalAmount, batchProcessId, request.BrCode);
+                }
+
+                // ৭. Settlement টেবিলে নতুন এন্ট্রি তৈরি করা
+                var settlementRecord = new Settlement
+                {
+                    Id = Guid.NewGuid(),
+                    SettlDate = DateTime.UtcNow,
+                    BankTxnDate = targetBankTxnDate,
+                    BatchProcessId = batchProcessId,
+                    CBSRef = "update after cbs happen",
+                    TotalAmount = totalAmount,
+                    BankAccountNo = string.Empty,
+                    Status = "COMPLETED",
+                    BrCode = request.BrCode,
+                    UserId = request.UserId,
+                    SettlementOperation = request.SettlementOperation,
+                    ProcessedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    CBSResponse = "update after cbs happen"
                 };
 
-                await SaveTransactionLogAsync(
-                    request: new DoTransactionRequest
-                    {
-                        PartnerId = request.PartnerId ?? string.Empty,
-                        PartnerTxnId = request.PartnerTxnId
-                    },
-                    response: new DoTransactionResponse
-                    {
-                        HttpCode = notFoundResponse.HttpCode,
-                        HttpStatus = notFoundResponse.HttpStatus,
-                        Message = notFoundResponse.Message
-                    },
-                    requestTime: requestTime,
-                    status : "Failed",
-                    requestType: TranLogRequestType.Reconcile,
-                    tranMode: string.Empty
-                );
+                await _context.Settlements.AddAsync(settlementRecord);
 
-                return notFoundResponse;
+                // ৮. ডাটাবেজ সেভ ও ট্রানজেকশন কমিট
+                await _context.SaveChangesAsync();
+                await dbTransaction.CommitAsync();
+
+                return new SettlementResponse
+                {
+                    HttpCode = 200,
+                    HttpStatus = "OK",
+                    Message = $"Settlement completed successfully for {request.SettlementOperation}. BatchProcessId: {batchProcessId}, Total Amount: {totalAmount}"
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred during Reconciliation for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
+                await dbTransaction.RollbackAsync();
+                _logger.LogError(ex, "Error occurred during DoSettlement for Operation: {Operation}", request.SettlementOperation);
 
-                var errorResponse = new ReconcileTransactionResponse
+                return new SettlementResponse
                 {
                     HttpCode = 500,
                     HttpStatus = "Internal Server Error",
-                    Message = "An error occurred while handling the reconciliation request."
+                    Message = $"An error occurred during settlement: {ex.Message}"
                 };
-
-                await SaveTransactionLogAsync(
-                    request: new DoTransactionRequest
-                    {
-                        PartnerId = request.PartnerId ?? string.Empty,
-                        PartnerTxnId = request.PartnerTxnId
-                    },
-                    response: new DoTransactionResponse
-                    {
-                        HttpCode = errorResponse.HttpCode,
-                        HttpStatus = errorResponse.HttpStatus,
-                        Message = errorResponse.Message
-                    },
-                    requestTime: requestTime,
-                    status : "Failed",
-                    requestType: TranLogRequestType.Reconcile,
-                    tranMode: string.Empty,
-                    errorMessage: ex.Message
-                );
-
-                return errorResponse;
             }
         }
 
-        private async Task SaveTransactionLogAsync(
-            DoTransactionRequest request,
-            DoTransactionResponse response,
-            DateTime requestTime,
-            string status,
-            string requestType,
-            string tranMode = null,
-            string sblTxnId = null,
-            decimal? balanceBefore = null,
-            decimal? balanceAfter = null,
-            string errorMessage = null)
+        // CBS Integration Placeholder Method
+        private async Task SendToCbsAsync(decimal totalAmount, string batchProcessId, string brCode)
         {
-            try
-            {
-                var log = new TransactionLog
-                {
-                    Id = Guid.NewGuid(),
-                    PartnerId = request?.PartnerId,
-                    PartnerTxnId = request?.PartnerTxnId,
-                    RequestType = requestType,
-                    RequestData = request != null ? JsonSerializer.Serialize(request) : null,
-                    ResponseData = response != null ? JsonSerializer.Serialize(response) : null,
-                    ResponseCode = response?.HttpCode.ToString(),
-                    ResponseMessage = errorMessage ?? response?.Message,
-                    RequestTimestamp = requestTime,
-                    ResponseTimestamp = DateTime.UtcNow,
-                    Status = status,
-                    SblTxnId = sblTxnId,
-                    AccountNo = request?.SourceAccountNo,
-                    TransactionAmount = request?.TransactionAmount,
-                    BalanceBefore = balanceBefore,
-                    BalanceAfter = balanceAfter,
-                    TranMode = tranMode
-                };
+            // TODO: CBS API Call Implementation will be added later
+           // _logger.LogInformation("Sending Toll Settlement to CBS. BatchProcessId: {BatchId}, Amount: {Amount}, Total Txns: {Count}",
+             //   batchProcessId, totalAmount, transactions.Count);
 
-                await _context.TransactionLogs.AddAsync(log);
-                await _context.SaveChangesAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to write TransactionLog for PartnerTxnId: {PartnerTxnId}", request?.PartnerTxnId);
-            }
-        }
-
-        // AccountInquiry-এর জন্য কাস্টমাইজড হেলপার মেথড
-        private async Task SaveInquiryTransactionLogAsync(
-            string searchKey,
-            object response,
-            DateTime requestTime,
-            string status,
-            string accountNo = null,
-            string errorMessage = null)
-        {
-            try
-            {
-                var log = new TransactionLog
-                {
-                    Id = Guid.NewGuid(),
-                    PartnerId = null,
-                    PartnerTxnId = null,
-                    RequestType = TranLogRequestType.AccountInquiry,
-                    RequestData = JsonSerializer.Serialize(new { SearchKey = searchKey }),
-                    ResponseData = response != null ? JsonSerializer.Serialize(response) : null,
-                    ResponseCode = status == "Success" ? "200" : "400",
-                    ResponseMessage = errorMessage ?? (status == "Success" ? "Inquiry Successful" : "Inquiry Failed"),
-                    RequestTimestamp = requestTime,
-                    ResponseTimestamp = DateTime.UtcNow,
-                    Status = status,
-                    SblTxnId = null,
-                    AccountNo = accountNo ?? searchKey,
-                    TransactionAmount = null,
-                    BalanceBefore = null,
-                    BalanceAfter = null,
-                    TranMode = null
-                };
-
-                await _context.TransactionLogs.AddAsync(log);
-                await _context.SaveChangesAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to write Inquiry TransactionLog for searchKey: {SearchKey}", searchKey);
-            }
+            await Task.CompletedTask;
         }
     }
 }

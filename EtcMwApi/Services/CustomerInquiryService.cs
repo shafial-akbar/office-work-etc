@@ -4,16 +4,19 @@ using Etc.Shared.Interfaces;
 using Etc.Shared.Models;
 using EtcMwApi.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace EtcMwApi.Services
 {
     public class CustomerInquiryService : ICustomerInquiryService
     {
         private readonly DatabaseContext _context;
+        private readonly ILogger<CustomerInquiryService> _logger;
 
-        public CustomerInquiryService(DatabaseContext context)
+        public CustomerInquiryService(DatabaseContext context, ILogger<CustomerInquiryService> logger)
         {
             _context = context;
+            _logger = logger;
         }
 
         public async Task<AccountCheckResponseDto> CheckAccountByMobileAsync(string mobileNo)
@@ -63,22 +66,66 @@ namespace EtcMwApi.Services
         // নতুন মেথড: মোবাইল নম্বর বা ওয়ালেট নম্বর দিয়ে ব্যালেন্স চেক
         public async Task<List<WalletBalanceResultDto>> GetWalletBalanceAsync(string searchKey)
         {
+            var requestTime = DateTime.UtcNow;
+
+            // ১. খালি/ইনভ্যালিড সার্চ কি-এর ক্ষেত্রে অডিট লগ ও রেসপন্স
             if (string.IsNullOrWhiteSpace(searchKey))
             {
-                return new List<WalletBalanceResultDto>();
+                var emptyResponse = new List<WalletBalanceResultDto>();
+
+                await SaveInquiryTransactionLogAsync(
+                    searchKey: searchKey,
+                    response: emptyResponse,
+                    requestTime: requestTime,
+                    status: "Failed",
+                    errorMessage: "Search key cannot be null or empty."
+                );
+
+                return emptyResponse;
             }
 
-            return await _context.Wallets
-                .AsNoTracking()
-                .Where(w => w.Status == WalletStatus.Active &&
-                           (w.MobileNo == searchKey || w.WalletNo == searchKey))
-                .Select(w => new WalletBalanceResultDto
-                {
-                    WalletNo = w.WalletNo,
-                    Balance = w.Balance,
-                    Currency = w.Currency
-                })
-                .ToListAsync();
+            try
+            {
+                // ২. রিড-ওনলি ডাটাবেজ কোয়েরি
+                var result = await _context.Wallets
+                    .AsNoTracking()
+                    .Where(w => w.Status == WalletStatus.Active &&
+                               (w.MobileNo == searchKey || w.WalletNo == searchKey))
+                    .Select(w => new WalletBalanceResultDto
+                    {
+                        WalletNo = w.WalletNo,
+                        Balance = w.Balance,
+                        Currency = w.Currency
+                    })
+                    .ToListAsync();
+
+                // ৩. ইনকোয়ারি সফল হলে TransactionLog সেভ
+                await SaveInquiryTransactionLogAsync(
+                    searchKey: searchKey,
+                    response: result,
+                    requestTime: requestTime,
+                    status: "Success",
+                    accountNo: result.FirstOrDefault()?.WalletNo
+                );
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred during GetWalletBalanceAsync for searchKey: {SearchKey}", searchKey);
+
+                var errorResponse = new List<WalletBalanceResultDto>();
+
+                await SaveInquiryTransactionLogAsync(
+                    searchKey: searchKey,
+                    response: errorResponse,
+                    requestTime: requestTime,
+                    status: "Failed",
+                    errorMessage: ex.Message
+                );
+
+                return errorResponse;
+            }
         }
 
         private static WalletSummaryDto MapToWalletDto(Wallet wallet)
@@ -105,6 +152,47 @@ namespace EtcMwApi.Services
                         }).ToList()
                     : new List<VehicleSummaryDto>()
             };
+        }
+
+        // AccountInquiry-এর জন্য কাস্টমাইজড হেলপার মেথড
+        private async Task SaveInquiryTransactionLogAsync(
+            string searchKey,
+            object response,
+            DateTime requestTime,
+            string status,
+            string accountNo = null,
+            string errorMessage = null)
+        {
+            try
+            {
+                var log = new TransactionLog
+                {
+                    Id = Guid.NewGuid(),
+                    PartnerId = null,
+                    PartnerTxnId = null,
+                    RequestType = TranLogRequestType.AccountInquiry,
+                    RequestData = JsonSerializer.Serialize(new { SearchKey = searchKey }),
+                    ResponseData = response != null ? JsonSerializer.Serialize(response) : null,
+                    ResponseCode = status == "Success" ? "200" : "400",
+                    ResponseMessage = errorMessage ?? (status == "Success" ? "Inquiry Successful" : "Inquiry Failed"),
+                    RequestTimestamp = requestTime,
+                    ResponseTimestamp = DateTime.UtcNow,
+                    Status = status,
+                    SblTxnId = null,
+                    AccountNo = accountNo ?? searchKey,
+                    TransactionAmount = null,
+                    BalanceBefore = null,
+                    BalanceAfter = null,
+                    TranMode = null
+                };
+
+                await _context.TransactionLogs.AddAsync(log);
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to write Inquiry TransactionLog for searchKey: {SearchKey}", searchKey);
+            }
         }
     }
 }

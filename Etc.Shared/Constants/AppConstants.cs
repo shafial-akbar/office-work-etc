@@ -41,11 +41,23 @@
         public const string Settled = "Settled";
     }
 
+    public static class ReconStatus
+    {
+        public const string Success = "Success";
+        public const string Failed = "Failed";
+    }
+
     public static class SettlementStatus
     {
         public const string Pending = "Pending";
         public const string Processing = "Processing";
         public const string Settled = "Settled";
+    }
+
+    public static class SettlementOperation
+    {
+        public const string Toll = "Toll";
+        public const string TopUp = "TopUp";
     }
 
     public static class TranMode

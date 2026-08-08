@@ -30,14 +30,6 @@ namespace Etc.Shared.DTOs
         public string? RefNo3 { get; set; } = string.Empty;
         public string? RefNo4 { get; set; } = string.Empty;
         public string? RefNo5 { get; set; } = string.Empty;
-
-        [Required(ErrorMessage = "TranMode is required.")]
-        [RegularExpression("^[DC]$", ErrorMessage = "TranMode must be 'D' or 'C'.")]
-        public string TranMode { get; set; } = string.Empty;
-
-        [Required(ErrorMessage = "SourceChannel is required.")]
-        [RegularExpression("^[WOCE]$", ErrorMessage = "Invalid SourceChannel. Allowed values: W (Wallet), O (Online SPG), C (OTC Counter), E (E Sheba).")]
-        public string SourceChannel { get; set; } = string.Empty;
     }
 
     public class DoTransactionResponse
@@ -54,6 +46,21 @@ namespace Etc.Shared.DTOs
         public string PartnerTxnId { get; set; } = string.Empty;
         public string TranStatus { get; set; } = string.Empty;
         public decimal TransactionAmount { get; set; }
+    }
+
+    public class ReverseTransactionRequest
+    {
+        [Required(ErrorMessage = "PartnerId (Wallet No) is required.")]
+        public string PartnerId { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "PartnerTxnId is required.")]
+        public string PartnerTxnId { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Transaction amount is required.")]
+        [RegularExpression(@"^\d+(\.\d{1,2})?$", ErrorMessage = "Transaction amount can have a maximum of 2 decimal places.")]
+
+        public decimal TransactionAmount { get; set; }
+
     }
 
 }

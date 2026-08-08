@@ -27,6 +27,7 @@ builder.Services.AddDbContext<DatabaseContext>(options =>
 // 2. DEPENDENCY INJECTION (Services & Business Logic Lifetimes)
 // =========================================================================
 // অ্যাপ্লিকেশন লেভেলের বিজনেস লজিক সার্ভিসসমূহ Scope স্পেসিফিকেশনসহ ইনজেক্ট করা হচ্ছে (Per HTTP Request Lifetime)
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITranService, TranService>();
 builder.Services.AddScoped<IWalletTransactionService, WalletTransactionService>();
 

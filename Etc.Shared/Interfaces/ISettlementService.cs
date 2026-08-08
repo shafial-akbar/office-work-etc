@@ -7,8 +7,7 @@ namespace Etc.Shared.Interfaces
 {
     public interface ISettlementService
     {
-        Task<> TopUpSettlementAsync();
+        Task<SettlementReportResponse> GetSettlementReportAsync(SettlementReportRequest request);
 
-       
     }    
 }
