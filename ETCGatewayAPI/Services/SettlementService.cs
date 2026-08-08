@@ -99,7 +99,7 @@ namespace ETCGatewayAPI.Services
             }
         }
 
-        public async Task<SettlementResponse> DoSettlementAsync(SettlementRequest request)
+        public async Task<DataprocessResponse> DoDataprocessAsync(DataprocessRequest request)
         {
             using var dbTransaction = await _context.Database.BeginTransactionAsync();
 
@@ -108,19 +108,19 @@ namespace ETCGatewayAPI.Services
                 // ১. রিকোয়েস্টের BankTxnDate পার্স করা
                 DateTime targetBankTxnDate = DateTimeHelper.ParseToDateTime(request.BankTxnDate);
 
-                // ২. প্রারম্ভিক চেক: উক্ত তারিখ ও অপারেশনের জন্য ইতোমধ্যে সেটেলমেন্ট করা হয়েছে কিনা
-                bool isAlreadySettled = await _context.Settlements
+                // ২. প্রারম্ভিক চেক: উক্ত তারিখ ও অপারেশনের জন্য ইতোমধ্যে সেটেলমেন্ট/Process করা হয়েছে কিনা
+                bool isAlreadySettledOrPending = await _context.Settlements
                     .AnyAsync(s => s.BankTxnDate.Date == targetBankTxnDate.Date
                                 && s.SettlementOperation.Equals(request.SettlementOperation, StringComparison.OrdinalIgnoreCase)
-                                && (s.Status == "COMPLETED" || s.Status == "PROCESSING"));
+                                && (s.Status == SettlementStatus.Settled || s.Status == SettlementStatus.Pending));
 
-                if (isAlreadySettled)
+                if (isAlreadySettledOrPending)
                 {
-                    return new SettlementResponse
+                    return new DataprocessResponse
                     {
                         HttpCode = 409,
                         HttpStatus = "Conflict",
-                        Message = $"Settlement has already been processed or is currently in progress for {request.SettlementOperation} on {targetBankTxnDate:yyyy-MM-dd}."
+                        Message = $"Settlement has already been Settled or is currently in Process for {request.SettlementOperation} on {targetBankTxnDate:yyyy-MM-dd}."
                     };
                 }
 
@@ -132,57 +132,50 @@ namespace ETCGatewayAPI.Services
                     ? TranMode.Debit
                     : TranMode.Credit;
 
-                var transactionsToSettle = await _context.DoTransactions
+                var transactionsToProcess = await _context.DoTransactions
                     .Where(t => t.BankTxnDate.Date == targetBankTxnDate.Date
                              && t.TranMode.Equals(targetTranMode, StringComparison.OrdinalIgnoreCase)
                              && t.TranStatus == TranStatus.Success
                              && t.SettlStatus == SettlementStatus.Pending)
                     .ToListAsync();
 
-                if (!transactionsToSettle.Any())
+                if (!transactionsToProcess.Any())
                 {
-                    return new SettlementResponse
+                    return new DataprocessResponse
                     {
                         HttpCode = 404,
                         HttpStatus = "Not Found",
-                        Message = $"No pending {request.SettlementOperation} transactions found for settlement on {targetBankTxnDate:yyyy-MM-dd}."
+                        Message = $"No pending {request.SettlementOperation} transactions found for Process on {targetBankTxnDate:yyyy-MM-dd}."
                     };
                 }
 
-                // ৫. DoTransactions টেবিলে BatchProcessId এবং SettlStatus, SettlDate আপডেট
+                // ৫. DoTransactions টেবিলে BatchProcessId এবং SettlStatus
                 DateTime settlDate = DateTime.UtcNow;
-                decimal totalAmount = transactionsToSettle.Sum(x => x.TransactionAmount);
+                decimal totalAmount = transactionsToProcess.Sum(x => x.TransactionAmount);
 
-                foreach (var txn in transactionsToSettle)
+                foreach (var txn in transactionsToProcess)
                 {
                     txn.BatchProcessId = batchProcessId;
-                    txn.SettlStatus = SettlementStatus.Settled;
-                    txn.SettlDate = settlDate;
-                }
-
-                // ৬. SettlementOperation = Toll হলে CBS API কল (Placeholder)
-                if (request.SettlementOperation.Equals(SettlementOperation.Toll, StringComparison.OrdinalIgnoreCase))
-                {
-                    await SendToCbsAsync(totalAmount, batchProcessId, request.BrCode);
+                    txn.SettlStatus = SettlementStatus.Processing;
                 }
 
                 // ৭. Settlement টেবিলে নতুন এন্ট্রি তৈরি করা
                 var settlementRecord = new Settlement
                 {
                     Id = Guid.NewGuid(),
-                    SettlDate = DateTime.UtcNow,
+                    //SettlDate = ,
                     BankTxnDate = targetBankTxnDate,
                     BatchProcessId = batchProcessId,
-                    CBSRef = "update after cbs happen",
+                    //CBSRef = "update after cbs happen",
                     TotalAmount = totalAmount,
                     BankAccountNo = string.Empty,
-                    Status = "COMPLETED",
+                    Status = SettlementStatus.Processing,
                     BrCode = request.BrCode,
                     UserId = request.UserId,
                     SettlementOperation = request.SettlementOperation,
                     ProcessedAt = DateTime.UtcNow,
                     CreatedAt = DateTime.UtcNow,
-                    CBSResponse = "update after cbs happen"
+                    //CBSResponse = "update after cbs happen"
                 };
 
                 await _context.Settlements.AddAsync(settlementRecord);
@@ -191,23 +184,23 @@ namespace ETCGatewayAPI.Services
                 await _context.SaveChangesAsync();
                 await dbTransaction.CommitAsync();
 
-                return new SettlementResponse
+                return new DataprocessResponse
                 {
                     HttpCode = 200,
                     HttpStatus = "OK",
-                    Message = $"Settlement completed successfully for {request.SettlementOperation}. BatchProcessId: {batchProcessId}, Total Amount: {totalAmount}"
+                    Message = $"Processing completed successfully for {request.SettlementOperation}. BatchProcessId: {batchProcessId}, Total Amount: {totalAmount}"
                 };
             }
             catch (Exception ex)
             {
                 await dbTransaction.RollbackAsync();
-                _logger.LogError(ex, "Error occurred during DoSettlement for Operation: {Operation}", request.SettlementOperation);
+                _logger.LogError(ex, "Error occurred during Processing for Operation: {Operation}", request.SettlementOperation);
 
-                return new SettlementResponse
+                return new DataprocessResponse
                 {
                     HttpCode = 500,
                     HttpStatus = "Internal Server Error",
-                    Message = $"An error occurred during settlement: {ex.Message}"
+                    Message = $"An error occurred during Processing: {ex.Message}"
                 };
             }
         }

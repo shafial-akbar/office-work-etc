@@ -7,6 +7,22 @@ using System.Threading.Tasks;
 
 namespace Etc.Shared.DTOs
 {
+    public class DataprocessRequest
+    {
+        public string BankTxnDate { get; set; }
+
+        public string SettlementOperation { get; set; } // Toll/TopUp
+        public string BrCode { get; set; } = string.Empty;
+        public string UserId { get; set; } = string.Empty;
+    }
+
+    public class DataprocessResponse
+    {
+        public int HttpCode { get; set; }
+        public string HttpStatus { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+    }
+
     public class SettlementRequest
     {
         public string BankTxnDate { get; set; }
