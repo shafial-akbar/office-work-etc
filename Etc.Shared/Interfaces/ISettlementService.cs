@@ -9,5 +9,7 @@ namespace Etc.Shared.Interfaces
     {
         Task<SettlementReportResponse> GetSettlementReportAsync(SettlementReportRequest request);
 
+        Task<DataprocessResponse> DoDataprocessAsync(DataprocessRequest request);
+
     }    
 }
