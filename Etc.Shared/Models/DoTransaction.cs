@@ -46,6 +46,7 @@ namespace Etc.Shared.Models
 
         [Required]
         public string BankTxnId { get; set; } = string.Empty;
+        public string OriginalBankTxnId { get; set; } = string.Empty;        
 
         [Required]
         public DateTime BankTxnDate { get; set; } = DateTime.UtcNow;
@@ -55,7 +56,7 @@ namespace Etc.Shared.Models
         public string TranStatus { get; set; } = string.Empty;
 
         [RegularExpression("^(Pending|Processing|Settled)$", ErrorMessage = "Invalid SettlStatus. Allowed values are: Pending, Processing, Settled")]
-        public string? SettlStatus { get; set; }
+        public string SettlStatus { get; set; } = string.Empty;
 
         public DateTime? SettlDate { get; set; }
 

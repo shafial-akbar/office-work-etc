@@ -325,7 +325,7 @@ namespace ETCGatewayAPI.Services
 
             try
             {
-                // ১. পূর্বে করা মূল ট্রানজেকশনটি যাচাই (PartnerTxnId, PartnerId, Amount এবং Success স্ট্যাটাস দিয়ে)
+                // ১. পূর্বে করা মূল ট্রানজেকশনটি যাচাই (PartnerTxnId, PartnerId, Amount এবং Success স্ট্যাটাস দিয়ে)
                 var originalTxn = await _context.DoTransactions
                     .FirstOrDefaultAsync(t => t.PartnerTxnId == request.PartnerTxnId
                                            && t.PartnerId == request.PartnerId
@@ -355,21 +355,21 @@ namespace ETCGatewayAPI.Services
                     return notFoundTxnResponse;
                 }
 
-                // ২. ট্রানজেকশনটি আজকের দিনের কিনা তা যাচাই (পরের দিন বা তার পরে হলে রিভার্স হবে না)
-                if (originalTxn.BankTxnDate.Date != requestTime.Date)
+                // ২. ট্রানজেকশনটি ইতোমধ্যে EOD Settlement-এ প্রসেস হয়ে গেছে কিনা তা যাচাই
+                if (originalTxn.SettlStatus == SettlementStatus.Settled || originalTxn.SettlStatus == SettlementStatus.Processing)
                 {
-                    _logger.LogWarning("Reversal Failed: Settlement restriction. Transaction Date: {TxnDate} is not today.", originalTxn.BankTxnDate);
+                    _logger.LogWarning("Reversal Failed: Transaction already settled for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
 
-                    var restrictedDateResponse = new DoTransactionResponse
+                    var settledResponse = new DoTransactionResponse
                     {
                         HttpCode = 400,
                         HttpStatus = "Bad Request",
-                        Message = "Reversal is only allowed for transactions performed today before settlement."
+                        Message = "Cannot reverse a transaction that has already been settled."
                     };
 
                     await SaveTransactionLogAsync(
                         reverseRequest: request,
-                        response: restrictedDateResponse,
+                        response: settledResponse,
                         requestTime: requestTime,
                         status: "Failed",
                         requestType: TranLogRequestType.TollReverse,
@@ -377,10 +377,10 @@ namespace ETCGatewayAPI.Services
                         sblTxnId: originalTxn.BankTxnId
                     );
 
-                    return restrictedDateResponse;
+                    return settledResponse;
                 }
 
-                // ৩. ওয়ালেট ভ্যালিডেশন
+                // ৩. ওয়ালেট ভ্যালিডেশন
                 var wallet = await _context.Wallets
                     .FirstOrDefaultAsync(w => w.WalletNo == request.PartnerId && w.Status == WalletStatus.Active);
 
@@ -407,7 +407,7 @@ namespace ETCGatewayAPI.Services
                     return notFoundWalletResponse;
                 }
 
-                // ৪. ট্রানজেকশনটি ইতোমধ্যে রিভার্সড কিনা চেক করা
+                // ৪. মূল ট্রানজেকশনটি ইতোমধ্যে রিভার্সড কিনা চেক করা
                 if (originalTxn.TranStatus == TranStatus.Reversed)
                 {
                     _logger.LogWarning("Reversal Failed: Transaction already reversed for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
@@ -432,20 +432,42 @@ namespace ETCGatewayAPI.Services
                     return alreadyReversedResponse;
                 }
 
-                // অডিটের জন্য ওয়ালেটের আগের ব্যালেন্স সংরক্ষণ
+                // অডিটের জন্য ওয়ালেটের আগের ব্যালেন্স সংরক্ষণ
                 decimal balanceBefore = wallet.Balance;
 
-                // ৫. মূল ট্রানজেকশনের স্টেটাস আপডেট
+                // ৫. মূল ট্রানজেকশনটির স্ট্যাটাস Reversed এ আপডেট করা
                 originalTxn.TranStatus = TranStatus.Reversed;
                 originalTxn.ResponseMessage = "Transaction Reversed";
 
-                // ৬. ওয়ালেটে ব্যালেন্স রিফান্ড/ক্রেডিট
+                // ৬. নতুন Reversal Transaction আইডি তৈরি (অন্যান্য মেথডের সেম ফরম্যাট)
+                string newReversalBankTxnId = $"{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(100000, 999999)}_REV";
+
+                // ৭. DoTransactions টেবিলে নতুন Credit Reversal এন্ট্রি তৈরি করা
+                var newReversalTxn = new DoTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    PartnerId = request.PartnerId,
+                    PartnerTxnId = $"{request.PartnerTxnId}_REV",
+                    OriginalBankTxnId = originalTxn.BankTxnId,
+                    TransactionAmount = request.TransactionAmount,
+                    TranMode = TranMode.Credit,
+                    BankTxnId = newReversalBankTxnId,
+                    BankTxnDate = requestTime,
+                    TranStatus = TranStatus.Success,
+                    SettlStatus = SettlementStatus.Pending, // Pending রাখার অর্থ হলো— "এই রিভার্সাল বা ক্রেডিটের হিসাবটি এখনও EOD Settlement Batch-এ প্রসেস করা বাকি আছে। দিনশেষে সেটেলমেন্ট সামারি তৈরির সময় এই ক্রেডিট অ্যামাউন্টটি টোল কর্তৃপক্ষের প্রাপ্য টাকা থেকে বিয়োগ করতে হবে।
+                    ResponseCode = "200",
+                    ResponseMessage = "Toll Reversal Credit",
+                };
+
+                await _context.DoTransactions.AddAsync(newReversalTxn);
+
+                // ৮. ওয়ালেটে ব্যালেন্স রিফান্ড/ক্রেডিট
                 wallet.Balance += request.TransactionAmount;
                 wallet.UpdatedAt = DateTime.UtcNow;
 
                 decimal balanceAfter = wallet.Balance;
 
-                // ৭. সফল রেসপন্স অবজেক্ট তৈরি
+                // ৯. সফল রেসপন্স অবজেক্ট তৈরি
                 var successResponse = new DoTransactionResponse
                 {
                     HttpCode = 200,
@@ -453,14 +475,14 @@ namespace ETCGatewayAPI.Services
                     Message = "Transaction reversed and balance refunded successfully.",
                     Body = new TransactionResultBody
                     {
-                        BankTxnId = originalTxn.BankTxnId,
+                        BankTxnId = newReversalBankTxnId,
                         PartnerTxnId = originalTxn.PartnerTxnId,
-                        TranStatus = originalTxn.TranStatus,
-                        TransactionAmount = originalTxn.TransactionAmount
+                        TranStatus = newReversalTxn.TranStatus,
+                        TransactionAmount = newReversalTxn.TransactionAmount
                     }
                 };
 
-                // ৮. Log & Database Save
+                // ১০. Log & Database Save
                 await SaveTransactionLogAsync(
                     reverseRequest: request,
                     response: successResponse,
@@ -468,7 +490,7 @@ namespace ETCGatewayAPI.Services
                     status: "Success",
                     requestType: TranLogRequestType.TollReverse,
                     tranMode: TranMode.Credit,
-                    sblTxnId: originalTxn.BankTxnId,
+                    sblTxnId: newReversalBankTxnId,
                     balanceBefore: balanceBefore,
                     balanceAfter: balanceAfter
                 );
@@ -476,7 +498,8 @@ namespace ETCGatewayAPI.Services
                 await _context.SaveChangesAsync();
                 await dbTransaction.CommitAsync();
 
-                _logger.LogInformation("Reversal successful. BankTxnId: {BankTxnId}, Updated Balance: {Balance}", originalTxn.BankTxnId, wallet.Balance);
+                _logger.LogInformation("Reversal successful. New Reversal TxnId: {ReversalTxnId}, Original TxnId: {OriginalTxnId}, Updated Balance: {Balance}",
+                    newReversalBankTxnId, originalTxn.BankTxnId, wallet.Balance);
 
                 return successResponse;
             }

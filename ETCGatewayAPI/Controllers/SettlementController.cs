@@ -23,7 +23,7 @@ namespace EtcMwApi.Controllers
 
         // ১. Toll Authority-র জন্য Settlement Endpoint (Force Debit Mode)
         [HttpPost("settlement-toll")]
-        public async Task<IActionResult> GetTollSettlementReport([FromBody] SettlementReportRequest request)
+        public async Task<IActionResult> GetTollSettlementReport([FromBody] ReportRequest request)
         {
             var logId = await _requestLogService.LogRequest(Request);
 
@@ -54,7 +54,7 @@ namespace EtcMwApi.Controllers
 
         // ২. SBL Channels-এর জন্য Settlement Endpoint (Force Credit Mode)
         [HttpPost("settlement-channel")]
-        public async Task<IActionResult> GetChannelSettlementReport([FromBody] SettlementReportRequest request)
+        public async Task<IActionResult> GetChannelSettlementReport([FromBody] ReportRequest request)
         {
             var logId = await _requestLogService.LogRequest(Request);
 

@@ -7,9 +7,8 @@ namespace Etc.Shared.Interfaces
 {
     public interface ISettlementService
     {
-        Task<SettlementReportResponse> GetSettlementReportAsync(SettlementReportRequest request);
-
         Task<DataprocessResponse> DoDataprocessAsync(DataprocessRequest request);
+        Task<SettlementResponse> DoSettlementAsync(SettlementRequest request);
 
     }    
 }

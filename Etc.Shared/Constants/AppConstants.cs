@@ -1,4 +1,6 @@
-﻿namespace Etc.Shared.Constants
+﻿using Etc.Shared.Models;
+
+namespace Etc.Shared.Constants
 {
     public class BaseStatus
     {
@@ -52,6 +54,7 @@
         public const string Pending = "Pending";
         public const string Processing = "Processing";
         public const string Settled = "Settled";
+        public const string Reversed = "Reversed";
     }
 
     public static class SettlementOperation
@@ -81,5 +84,13 @@
         public const string Counter = "Counter";
         public const string Wallet = "Wallet";
         public const string Esheba = "Esheba";
+    }
+
+    public static class ReportType
+    {
+        public const string Transaction = "Transaction";       // ১. Active Success (রিভার্সড বাদ দিয়ে)
+        public const string Reconciliation = "Reconciliation"; // For Top-up channels & Toll Authority (Status: Success & Reversed)
+        public const string Settlement = "Settlement"; // For EOD Disbursement/Settlement Batch (Status: Settled)
+        public const string Reversal = "Reversal";             // ৪. Only Reversed Transactions (অডিট ও রিফান্ড ট্রেসিং)
     }
 }
