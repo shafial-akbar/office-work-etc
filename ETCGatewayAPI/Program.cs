@@ -28,7 +28,7 @@ builder.Services.AddDbContext<DatabaseContext>(options =>
 // =========================================================================
 // অ্যাপ্লিকেশন লেভেলের বিজনেস লজিক সার্ভিসসমূহ Scope স্পেসিফিকেশনসহ ইনজেক্ট করা হচ্ছে (Per HTTP Request Lifetime)
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ITranService, TranService>();
+builder.Services.AddScoped<IDoTranService, TranService>();
 builder.Services.AddScoped<IWalletTransactionService, WalletTransactionService>();
 
 
@@ -119,6 +119,11 @@ if (app.Environment.IsDevelopment())
 
 // HTTP রিকোয়েস্ট নিরাপদ HTTPS প্রোটোকলে রিডাইরেক্ট করা
 app.UseHttpsRedirection();
+
+app.UseRouting();
+
+// CORS (যদি ফ্রন্টএন্ড ভিন্ন ডোমেইন/পোর্টে থাকে)
+app.UseCors();
 
 // মিডলওয়্যার পাইপলাইন আর্কিটেকচার (Authentication অবশ্যই Authorization-এর পূর্বে থাকতে হবে)
 app.UseAuthentication();  // রিকোয়েস্ট থেকে ইউজার বা ক্লায়েন্টের পরিচয় সনাক্তকরণ

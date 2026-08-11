@@ -127,5 +127,97 @@ namespace ETCGatewayAPI.Services
                 throw;
             }
         }
+
+        public async Task<MasterBalanceSummaryResponse> GetMasterBalanceSummaryAsync(DateTime? fromDate, DateTime? toDate, DateTime? asOfDate = null)
+        {
+            try
+            {
+                // ১. তারিখগুলো নির্ধারণ করা
+                // যদি FromDate না থাকে কিন্তু AsOfDate দেওয়া হয়, তবে ToDate হবে AsOfDate
+                DateTime effectiveToDate = (toDate ?? asOfDate ?? DateTime.UtcNow).Date;
+                DateTime? effectiveFromDate = fromDate?.Date;
+
+                decimal openingBalance = 0m;
+
+                // ২. Opening Balance বের করা (যদি FromDate পাঠানো হয়)
+                if (effectiveFromDate.HasValue)
+                {
+                    var openingSummary = await _context.DoTransactions
+                        .Where(t => t.BankTxnDate.Date < effectiveFromDate.Value)
+                        .GroupBy(t => 1)
+                        .Select(g => new
+                        {
+                            TopUp = g.Sum(x => x.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase)
+                                                   && x.TranStatus == TranStatus.Success ? x.TransactionAmount : 0m),
+
+                            GrossToll = g.Sum(x => x.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase)
+                                                  && x.TranStatus == TranStatus.Success ? x.TransactionAmount : 0m),
+
+                            ReversedToll = g.Sum(x => x.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase)
+                                                     && x.TranStatus == TranStatus.Reversed ? x.TransactionAmount : 0m)
+                        })
+                        .FirstOrDefaultAsync();
+
+                    if (openingSummary != null)
+                    {
+                        openingBalance = openingSummary.TopUp - (openingSummary.GrossToll - openingSummary.ReversedToll);
+                    }
+                }
+
+                // ৩. নির্দিষ্ট Date Range-এর ফিল্টারড কুয়েরি
+                var periodQuery = _context.DoTransactions.AsQueryable();
+
+                if (effectiveFromDate.HasValue)
+                {
+                    // Date Range ফিল্টারিং
+                    periodQuery = periodQuery.Where(t => t.BankTxnDate.Date >= effectiveFromDate.Value && t.BankTxnDate.Date <= effectiveToDate);
+                }
+                else
+                {
+                    // কেবল AsOfDate / সূচনালগ্ন থেকে effectiveToDate ফিল্টারিং
+                    periodQuery = periodQuery.Where(t => t.BankTxnDate.Date <= effectiveToDate);
+                }
+
+                var periodSummary = await periodQuery
+                    .GroupBy(t => 1)
+                    .Select(g => new
+                    {
+                        TotalTopUp = g.Sum(x => x.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase)
+                                               && x.TranStatus == TranStatus.Success ? x.TransactionAmount : 0m),
+
+                        GrossToll = g.Sum(x => x.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase)
+                                              && x.TranStatus == TranStatus.Success ? x.TransactionAmount : 0m),
+
+                        ReversedToll = g.Sum(x => x.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase)
+                                                 && x.TranStatus == TranStatus.Reversed ? x.TransactionAmount : 0m)
+                    })
+                    .FirstOrDefaultAsync();
+
+                decimal periodTopUp = periodSummary?.TotalTopUp ?? 0m;
+                decimal periodGrossToll = periodSummary?.GrossToll ?? 0m;
+                decimal periodReversedToll = periodSummary?.ReversedToll ?? 0m;
+
+                // ৪. মেয়াদী ও সমাপনী ব্যালেন্স গণনা
+                decimal periodNetToll = periodGrossToll - periodReversedToll;
+                decimal closingBalance = openingBalance + periodTopUp - periodNetToll;
+
+                return new MasterBalanceSummaryResponse
+                {
+                    OpeningBalance = openingBalance,
+                    TotalTopUpAmount = periodTopUp,
+                    GrossTollAmount = periodGrossToll,
+                    ReversedTollAmount = periodReversedToll,
+                    NetTollAmount = periodNetToll,
+                    ClosingBalance = closingBalance,
+                    FromDate = effectiveFromDate,
+                    ToDate = effectiveToDate
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while generating Master Balance Summary Report.");
+                throw;
+            }
+        }
     }
 }

@@ -3,14 +3,17 @@ using Etc.Shared.Interfaces;
 using Etc.Shared.Constants;
 using ETCGatewayAPI.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace EtcMwApi.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class SettlementController : ControllerBase
     {
         private readonly ISettlementService _settlementService;
+        private readonly IReportService _reportService;
         private readonly IRequestLogService _requestLogService;
 
         public SettlementController(
@@ -23,7 +26,7 @@ namespace EtcMwApi.Controllers
 
         // ১. Toll Authority-র জন্য Settlement Endpoint (Force Debit Mode)
         [HttpPost("settlement-toll")]
-        public async Task<IActionResult> GetTollSettlementReport([FromBody] ReportRequest request)
+        public async Task<IActionResult> DoDataprocessAsync([FromBody] DataprocessRequest request)
         {
             var logId = await _requestLogService.LogRequest(Request);
 

@@ -8,6 +8,6 @@ namespace Etc.Shared.Interfaces
     public interface IReportService
     {
         Task<ReportResponse> GetReportAsync(ReportRequest request);
-
+        Task<MasterBalanceSummaryResponse> GetMasterBalanceSummaryAsync(DateTime? fromDate, DateTime? toDate, DateTime? asOfDate = null);
     }    
 }

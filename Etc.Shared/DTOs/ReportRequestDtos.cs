@@ -52,4 +52,17 @@ namespace Etc.Shared.DTOs
         public string? RefNo1 { get; set; }
         public DateTime? ChannelTransactionDate { get; set; }
     }
+
+    public class MasterBalanceSummaryResponse
+    {
+        public decimal OpeningBalance { get; set; }           // FromDate-এর আগের ব্যালেন্স
+        public decimal TotalTopUpAmount { get; set; }         // নির্দিষ্ট মেয়াদের মোট টপ-আপ
+        public decimal GrossTollAmount { get; set; }          // নির্দিষ্ট মেয়াদের মোট ডেবিট টোল
+        public decimal ReversedTollAmount { get; set; }       // নির্দিষ্ট মেয়াদের মোট রিভার্সড টোল
+        public decimal NetTollAmount { get; set; }            // GrossToll - ReversedToll
+        public decimal ClosingBalance { get; set; }           // OpeningBalance + TopUp - NetToll (Total Virtual Master Balance)
+
+        public DateTime? FromDate { get; set; }
+        public DateTime ToDate { get; set; }
+    }
 }

@@ -2,12 +2,14 @@
 using Etc.Shared.Interfaces;
 using ETCGatewayAPI.Services;
 using EtcMwApi.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace EtcMwApi.Controllers
+namespace ETCGatewayAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class WalletTransactionController : ControllerBase
     {
         private readonly CustomerInquiryService _inquiryService;
