@@ -277,7 +277,13 @@ namespace ETCGatewayAPI.Services
                 if (request.SettlementOperation.Equals(SettlementOperation.Toll, StringComparison.OrdinalIgnoreCase))
                 {
                     // CBS Call (Request-এর BrCode এবং SettleRecord-এর NetSettlementAmount পাঠানো হচ্ছে)
-                    var cbsResponse = await SendToCbsAsync(settleRecord.NetSettlementAmount, request.BrCode, settleRecord.BatchProcessId);
+
+                    var cbsResponse = await SendToCbsAsync(new BatchRequestDto 
+                    { 
+                        NetSettlementAmount = settleRecord.NetSettlementAmount, 
+                        BrCode = request.BrCode, 
+                        BatchProcessId = settleRecord.BatchProcessId 
+                    });
 
                     if (cbsResponse.Status == "200" || cbsResponse.Status == "1004")
                     {
@@ -345,11 +351,11 @@ namespace ETCGatewayAPI.Services
             }
         }
 
-        public async Task<PostTransactionResponse> SendToCbsAsync(decimal netSettlementAmount, string settleBrCode, string batchProcessId)
+        public async Task<PostTransactionResponse> SendToCbsAsync(BatchRequestDto request)
         {
             var postTransactionResponse = new PostTransactionResponse();
             string batchDateStr = DateTime.Now.ToString("yyyy-MM-dd");
-            string narration = $"{batchProcessId}|{settleBrCode}|{batchDateStr}";
+            string narration = $"{request.BatchProcessId}|{request.BrCode}|{batchDateStr}";
 
             var postTransactionRequest = new PostTransactionRequest()
             {
@@ -357,22 +363,22 @@ namespace ETCGatewayAPI.Services
                 ServiceCode = _configuration["PostTransaction:ServiceCode"]!,
                 SpCode = _configuration["PostTransaction:SpCode"]!,
                 ChannelId = _configuration["PostTransaction:ChannelId"]!,
-                ReferenceNo = batchProcessId,
+                ReferenceNo = request.BatchProcessId,
                 ReferenceDate = batchDateStr,
-                OrigBrnCode = settleBrCode,
-                BatchNarration = batchProcessId,
+                OrigBrnCode = request.BrCode,
+                BatchNarration = request.BatchProcessId,
                 Debits = new List<Debit>(),
                 Credits = new List<Credit>()
             };
 
-            if (netSettlementAmount > 0)
+            if (request.NetSettlementAmount > 0)
             {
                 // Debit Portion (GL Account)
                 postTransactionRequest.Debits.Add(new Debit()
                 {
                     GlAccCode = _configuration["PostTransaction:ETCParkingGL"]!,
-                    GlBrnCode = settleBrCode,
-                    Amount = netSettlementAmount,
+                    GlBrnCode = request.BrCode,
+                    Amount = request.NetSettlementAmount,
                     Narration = narration,
                     CreditNarration = narration
                 });
@@ -381,7 +387,7 @@ namespace ETCGatewayAPI.Services
                 postTransactionRequest.Credits.Add(new Credit()
                 {
                     AccountNumber = _configuration["PostTransaction:ETCSettleAcct"]!,
-                    Amount = netSettlementAmount,
+                    Amount = request.NetSettlementAmount,
                     Narration = narration,
                     DebitNarration = narration
                 });
@@ -393,7 +399,6 @@ namespace ETCGatewayAPI.Services
                 string requestUrl = $"{baseUrl.TrimEnd('/')}/PostTransaction";
                 _logger.LogInformation("SendToCbsAsync Request: {Request}", JsonConvert.SerializeObject(postTransactionRequest));
 
-                // Inject করা _httpClient ব্যবহার করা হয়েছে
                 var response = await _httpClient.PostAsJsonAsync(requestUrl, postTransactionRequest);
 
                 if (response.IsSuccessStatusCode)

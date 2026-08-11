@@ -9,6 +9,6 @@ namespace Etc.Shared.Interfaces
     {
         Task<DataprocessResponse> DoDataprocessAsync(DataprocessRequest request);
         Task<SettlementResponse> DoSettlementAsync(SettlementRequest request);
-        Task<PostTransactionResponse> SendToCbsAsync(decimal netSettlementAmount, string settleBrCode, string batchProcessId);
+        Task<PostTransactionResponse> SendToCbsAsync(BatchRequestDto request);
     }    
 }

@@ -1,5 +1,12 @@
 ﻿namespace Etc.Shared.DTOs
 {
+    public class BatchRequestDto 
+    {
+        public decimal NetSettlementAmount { get; set; }
+        public string BrCode { get; set; }
+        public string BatchProcessId { get; set; }
+    }
+
     public class PostTransactionRequest
     {
         public PostTransactionRequest()
