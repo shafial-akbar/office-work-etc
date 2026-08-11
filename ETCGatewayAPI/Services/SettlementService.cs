@@ -59,44 +59,113 @@ namespace ETCGatewayAPI.Services
                 // ৩. ইউনিক BatchProcessId তৈরি করা
                 string batchProcessId = $"{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(100, 999)}";
 
-                // ৪. SettlementOperation অনুযায়ী TranMode নির্ধারণ ও Pending DoTransactions ফিল্টারিং
-                string targetTranMode = request.SettlementOperation.Equals(SettlementOperation.Toll, StringComparison.OrdinalIgnoreCase)
-                    ? TranMode.Debit
-                    : TranMode.Credit;
+                List<DoTransaction> transactionsToProcess = new();
 
-                var transactionsToProcess = await _context.DoTransactions
-                    .Where(t => t.BankTxnDate.Date == targetBankTxnDate.Date
-                             && t.TranMode.Equals(targetTranMode, StringComparison.OrdinalIgnoreCase)
-                             && t.TranStatus == TranStatus.Success
-                             && t.SettlStatus == SettlementStatus.Pending)
-                    .ToListAsync();
+                decimal totalSuccessAmount = 0m;
+                decimal totalReverseAmount = 0m;
+                decimal grossTotalAmount = 0m;
+                decimal netSettlementAmount = 0m;
 
-                if (transactionsToProcess == null || !transactionsToProcess.Any())
+                int successCount = 0;
+                int reverseCount = 0;
+                int netCount = 0;
+
+                // ৪. SettlementOperation অনুযায়ী ডায়নামিক ফিল্টারিং ও নিট ক্যালকুলেশন
+                if (request.SettlementOperation.Equals(SettlementOperation.Toll, StringComparison.OrdinalIgnoreCase))
                 {
-                    return new DataprocessResponse
+                    // TOLL: Success Debit এবং Reversed Transactions উভয়ই প্রসেস হবে
+                    transactionsToProcess = await _context.DoTransactions
+                        .Where(t => t.BankTxnDate.Date == targetBankTxnDate.Date
+                                 && t.SettlStatus == SettlementStatus.Pending
+                                 && (t.TranStatus == TranStatus.Success || t.TranStatus == TranStatus.Reversed))
+                        .ToListAsync();
+
+                    if (!transactionsToProcess.Any())
                     {
-                        HttpCode = 404,
-                        HttpStatus = "Not Found",
-                        Message = $"No pending {request.SettlementOperation} transactions found for Process on {targetBankTxnDate:yyyy-MM-dd}."
-                    };
+                        return new DataprocessResponse
+                        {
+                            HttpCode = 404,
+                            HttpStatus = "Not Found",
+                            Message = $"No pending Toll transactions found for Process on {targetBankTxnDate:yyyy-MM-dd}."
+                        };
+                    }
+
+                    var successTxns = transactionsToProcess
+                        .Where(t => t.TranStatus == TranStatus.Success && t.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                    var reversedTxns = transactionsToProcess
+                        .Where(t => t.TranStatus == TranStatus.Reversed)
+                        .ToList();
+
+                    totalSuccessAmount = successTxns.Sum(x => x.TransactionAmount);
+                    totalReverseAmount = reversedTxns.Sum(x => x.TransactionAmount);
+
+                    // Amount Calculations
+                    grossTotalAmount = totalSuccessAmount + totalReverseAmount;    // Success Amount + Reverse Amount
+                    netSettlementAmount = totalSuccessAmount - totalReverseAmount; // Success Amount - Reverse Amount
+
+                    // Count Calculations
+                    successCount = successTxns.Count;
+                    reverseCount = reversedTxns.Count;
+                    netCount = successCount - reverseCount;                        // Success Count - Reverse Count
+                }
+                else
+                {
+                    // TOPUP: শুধুমাত্র সফল Credit Transaction-গুলো প্রসেস হবে
+                    transactionsToProcess = await _context.DoTransactions
+                        .Where(t => t.BankTxnDate.Date == targetBankTxnDate.Date
+                                 && t.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase)
+                                 && t.TranStatus == TranStatus.Success
+                                 && t.SettlStatus == SettlementStatus.Pending)
+                        .ToListAsync();
+
+                    if (!transactionsToProcess.Any())
+                    {
+                        return new DataprocessResponse
+                        {
+                            HttpCode = 404,
+                            HttpStatus = "Not Found",
+                            Message = $"No pending TopUp transactions found for Process on {targetBankTxnDate:yyyy-MM-dd}."
+                        };
+                    }
+
+                    totalSuccessAmount = transactionsToProcess.Sum(x => x.TransactionAmount);
+                    totalReverseAmount = 0m;
+
+                    grossTotalAmount = totalSuccessAmount;
+                    netSettlementAmount = totalSuccessAmount;
+
+                    successCount = transactionsToProcess.Count;
+                    reverseCount = 0;
+                    netCount = successCount;
                 }
 
-                // ৬. DoTransactions টেবিলে BatchProcessId এবং SettlStatus আপডেট
+                // ৫. DoTransactions টেবিলে BatchProcessId এবং SettlStatus আপডেট
                 foreach (var txn in transactionsToProcess)
                 {
                     txn.BatchProcessId = batchProcessId;
                     txn.SettlStatus = SettlementStatus.Processing;
                 }
 
-                // ৭. Settlement টেবিলে নতুন এন্ট্রি তৈরি করা
+                // ৬. Settlement টেবিলে নতুন ফিল্ড স্ট্রাকচারসহ এন্ট্রি তৈরি
                 var settlementRecord = new Settlement
                 {
                     Id = Guid.NewGuid(),
                     BankTxnDate = targetBankTxnDate,
                     BatchProcessId = batchProcessId,
-                    TotalAmount = transactionsToProcess.Sum(x => x.TransactionAmount),
-                    TxnCount = transactionsToProcess.Count,
-                    BankAccountNo = _configuration["PostTransaction:ETCSettleAcct"]!,
+
+                    // Amount Properties
+                    TotalAmount = grossTotalAmount,           // Success Amount + Reverse Amount
+                    ReverseAmount = totalReverseAmount,       // Total Reverse Amount
+                    NetSettlementAmount = netSettlementAmount, // Success Amount - Reverse Amount
+
+                    // Count Properties
+                    TotalCount = transactionsToProcess.Count, // Total Count (Success + Reverse)
+                    ReverseCount = reverseCount,              // Reverse Count
+                    NetCount = netCount,                      // Net Count (Success - Reverse)
+
+                    SettlementAccountNo = _configuration["PostTransaction:ETCSettleAcct"]!,
                     Status = SettlementStatus.Processing,
                     ProcessBrCode = request.BrCode,
                     ProcessedBy = request.UserId,
@@ -106,7 +175,7 @@ namespace ETCGatewayAPI.Services
 
                 await _context.Settlements.AddAsync(settlementRecord);
 
-                // ৮. ডাটাবেজ সেভ ও ট্রানজেকশন কমিট
+                // ৭. ডাটাবেজ সেভ ও ট্রানজেকশন কমিট
                 await _context.SaveChangesAsync();
                 await dbTransaction.CommitAsync();
 
@@ -114,7 +183,7 @@ namespace ETCGatewayAPI.Services
                 {
                     HttpCode = 200,
                     HttpStatus = "OK",
-                    Message = $"Processing completed successfully for {request.SettlementOperation}. BatchProcessId: {batchProcessId}, Total Amount: {transactionsToProcess.Count}"
+                    Message = $"Processing completed successfully for {request.SettlementOperation}. BatchProcessId: {batchProcessId}, Total Txns: {transactionsToProcess.Count}, Net Amount: {netSettlementAmount}"
                 };
             }
             catch (Exception ex)
@@ -156,17 +225,28 @@ namespace ETCGatewayAPI.Services
                     };
                 }
 
-                // ৩. SettlementOperation অনুযায়ী TranMode নির্ধারণ ও Processing ট্রানজেকশন ফিল্টারিং
-                string targetTranMode = request.SettlementOperation.Equals(SettlementOperation.Toll, StringComparison.OrdinalIgnoreCase)
-                    ? TranMode.Debit
-                    : TranMode.Credit;
+                // ৩. SettlementOperation অনুযায়ী DoTransactions ফিল্টারিং
+                List<DoTransaction> transactionsToSettle = new();
 
-                var transactionsToSettle = await _context.DoTransactions
-                    .Where(t => t.BankTxnDate.Date == targetBankTxnDate.Date
-                             && t.TranMode.Equals(targetTranMode, StringComparison.OrdinalIgnoreCase)
-                             && t.TranStatus == TranStatus.Success
-                             && t.SettlStatus == SettlementStatus.Processing)
-                    .ToListAsync();
+                if (request.SettlementOperation.Equals(SettlementOperation.Toll, StringComparison.OrdinalIgnoreCase))
+                {
+                    // TOLL: Processing অবস্থায় থাকা Success এবং Reversed ট্রানজেকশনগুলো সিলেক্ট করা
+                    transactionsToSettle = await _context.DoTransactions
+                        .Where(t => t.BankTxnDate.Date == targetBankTxnDate.Date
+                                 && t.SettlStatus == SettlementStatus.Processing
+                                 && (t.TranStatus == TranStatus.Success || t.TranStatus == TranStatus.Reversed))
+                        .ToListAsync();
+                }
+                else
+                {
+                    // TOPUP: Processing অবস্থায় থাকা Credit Success ট্রানজেকশনগুলো সিলেক্ট করা
+                    transactionsToSettle = await _context.DoTransactions
+                        .Where(t => t.BankTxnDate.Date == targetBankTxnDate.Date
+                                 && t.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase)
+                                 && t.TranStatus == TranStatus.Success
+                                 && t.SettlStatus == SettlementStatus.Processing)
+                        .ToListAsync();
+                }
 
                 if (transactionsToSettle == null || !transactionsToSettle.Any())
                 {
@@ -178,7 +258,7 @@ namespace ETCGatewayAPI.Services
                     };
                 }
 
-                // ৪. প্রথম ট্রানজেকশনের BatchProcessId দিয়ে Settlement রেকর্ড খোঁজা
+                // ৪. প্রথম ট্রানজেকশনের BatchProcessId দিয়ে Settlement রেকর্ড খোঁজা
                 string batchProcessId = transactionsToSettle[0].BatchProcessId!;
                 var settleRecord = await _context.Settlements
                     .FirstOrDefaultAsync(t => t.BatchProcessId == batchProcessId);
@@ -193,40 +273,38 @@ namespace ETCGatewayAPI.Services
                     };
                 }
 
-                // ৫. Eihher Toll Operation প্রসেসিং
+                // ৫. Toll Operation প্রসেসিং (CBS Voucher Posting)
                 if (request.SettlementOperation.Equals(SettlementOperation.Toll, StringComparison.OrdinalIgnoreCase))
                 {
-                    // CBS call
-                    var CbsResponse = await SendToCbsAsync(settleRecord.TotalAmount, settleRecord.SettleBrCode, settleRecord.BatchProcessId);
+                    // CBS Call (Request-এর BrCode এবং SettleRecord-এর NetSettlementAmount পাঠানো হচ্ছে)
+                    var cbsResponse = await SendToCbsAsync(settleRecord.NetSettlementAmount, request.BrCode, settleRecord.BatchProcessId);
 
-                    if (CbsResponse.Status == "200" || CbsResponse.Status == "1004")
+                    if (cbsResponse.Status == "200" || cbsResponse.Status == "1004")
                     {
                         // Settlements টেবিল আপডেট
-                        settleRecord.CBSResponse = JsonConvert.SerializeObject(CbsResponse);
-
+                        settleRecord.CBSResponse = JsonConvert.SerializeObject(cbsResponse);
                         settleRecord.SettledBy = request.UserId;
                         settleRecord.SettleBrCode = request.BrCode;
                         settleRecord.SettledAt = DateTime.UtcNow;
                         settleRecord.Status = SettlementStatus.Settled;
 
-                        // DoTransactions টেবিল আপডেট
+                        // DoTransactions টেবিল আপডেট (Success + Reversed উভয় ফিল্টার হওয়া আইটেম Settled হবে)
                         foreach (var txn in transactionsToSettle)
                         {
                             txn.SettlStatus = SettlementStatus.Settled;
                         }
-
                     }
                     else
                     {
                         return new SettlementResponse
                         {
-                            HttpCode = 405,
-                            HttpStatus = "Not Found",
-                            Message = $"SendToCBS Failed for BatchProcessId: {batchProcessId}. Please Try again."
+                            HttpCode = 400,
+                            HttpStatus = "Bad Request",
+                            Message = $"SendToCBS Failed for BatchProcessId: {batchProcessId}. Response Code: {cbsResponse.Status}. Please try again."
                         };
                     }
                 }
-                // ৬. Or TopUp Operation প্রসেসিং
+                // ৬. TopUp Operation প্রসেসিং
                 else
                 {
                     // Settlements টেবিল আপডেট
@@ -242,7 +320,7 @@ namespace ETCGatewayAPI.Services
                     }
                 }
 
-                // ৭. ডাটাবেজ সেভ ও ট্রানজেকশন কমিট (সঠিক স্থানে রয়েছে)
+                // ৭. ডাটাবেজ সেভ ও ট্রানজেকশন কমিট
                 await _context.SaveChangesAsync();
                 await dbTransaction.CommitAsync();
 
@@ -250,7 +328,7 @@ namespace ETCGatewayAPI.Services
                 {
                     HttpCode = 200,
                     HttpStatus = "OK",
-                    Message = $"Settlement completed successfully for {request.SettlementOperation}, Total Amount: {settleRecord.TotalAmount}"
+                    Message = $"Settlement completed successfully for {request.SettlementOperation}. BatchProcessId: {batchProcessId}, Net Settlement Amount: {settleRecord.NetSettlementAmount}"
                 };
             }
             catch (Exception ex)
@@ -267,7 +345,7 @@ namespace ETCGatewayAPI.Services
             }
         }
 
-        public async Task<PostTransactionResponse> SendToCbsAsync(decimal totalAmount, string settleBrCode, string batchProcessId)
+        public async Task<PostTransactionResponse> SendToCbsAsync(decimal netSettlementAmount, string settleBrCode, string batchProcessId)
         {
             var postTransactionResponse = new PostTransactionResponse();
             string batchDateStr = DateTime.Now.ToString("yyyy-MM-dd");
@@ -287,14 +365,14 @@ namespace ETCGatewayAPI.Services
                 Credits = new List<Credit>()
             };
 
-            if (totalAmount > 0)
+            if (netSettlementAmount > 0)
             {
                 // Debit Portion (GL Account)
                 postTransactionRequest.Debits.Add(new Debit()
                 {
                     GlAccCode = _configuration["PostTransaction:ETCParkingGL"]!,
                     GlBrnCode = settleBrCode,
-                    Amount = totalAmount,
+                    Amount = netSettlementAmount,
                     Narration = narration,
                     CreditNarration = narration
                 });
@@ -303,7 +381,7 @@ namespace ETCGatewayAPI.Services
                 postTransactionRequest.Credits.Add(new Credit()
                 {
                     AccountNumber = _configuration["PostTransaction:ETCSettleAcct"]!,
-                    Amount = totalAmount,
+                    Amount = netSettlementAmount,
                     Narration = narration,
                     DebitNarration = narration
                 });

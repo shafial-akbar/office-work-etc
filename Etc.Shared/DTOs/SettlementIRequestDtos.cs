@@ -9,10 +9,16 @@ namespace Etc.Shared.DTOs
 {
     public class DataprocessRequest
     {
-        public string BankTxnDate { get; set; }
+        [Required(ErrorMessage = "BankTxnDate is required.")]
+        public string BankTxnDate { get; set; } = string.Empty;
 
-        public string SettlementOperation { get; set; } // Toll/TopUp
+        [Required(ErrorMessage = "SettlementOperation is required.")]
+        public string SettlementOperation { get; set; } = string.Empty; // Toll/TopUp
+
+        [Required(ErrorMessage = "BrCode is required.")]
         public string BrCode { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "UserId is required.")]
         public string UserId { get; set; } = string.Empty;
     }
 
@@ -25,10 +31,16 @@ namespace Etc.Shared.DTOs
 
     public class SettlementRequest
     {
-        public string BankTxnDate { get; set; }
+        [Required(ErrorMessage = "BankTxnDate is required.")]
+        public string BankTxnDate { get; set; } = string.Empty;
 
-        public string SettlementOperation { get; set; } // Toll/TopUp
+        [Required(ErrorMessage = "SettlementOperation is required.")]
+        public string SettlementOperation { get; set; } = string.Empty; // Toll/TopUp
+
+        [Required(ErrorMessage = "BrCode is required.")]
         public string BrCode { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "UserId is required.")]
         public string UserId { get; set; } = string.Empty;
     }
 
