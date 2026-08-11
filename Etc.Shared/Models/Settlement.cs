@@ -11,9 +11,10 @@ namespace Etc.Shared.Models
         public Guid Id { get; set; }
         public DateTime BankTxnDate { get; set; }
         public string BatchProcessId { get; set; }
-        public string CBSRef { get; set; }
         public decimal TotalAmount { get; set; }
         public int TxnCount { get; set; }
+        public string SettlementAccountNo { get; set; }
+        public string ParkingGL { get; set; }
         public string BankAccountNo { get; set; }
         public string Status { get; set; } 
         public string SettlementOperation { get; set; } // // Toll/TopUp

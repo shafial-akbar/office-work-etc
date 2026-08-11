@@ -5,25 +5,30 @@ using ETCGatewayAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Etc.Shared.Constants;
 using Microsoft.AspNetCore.Http;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Etc.Shared.Helpers;
+using System.Diagnostics;
+using Newtonsoft.Json;
 
 namespace ETCGatewayAPI.Services
 {
     public class SettlementService : ISettlementService
     {
         private readonly DatabaseContext _context;
+        private readonly IConfiguration _configuration;
+        private readonly HttpClient _httpClient;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ILogger<SettlementService> _logger;
 
-        public SettlementService(DatabaseContext context,
+        public SettlementService(DatabaseContext context, IConfiguration configuration, 
                                IHttpContextAccessor httpContextAccessor,
-                               ILogger<SettlementService> logger)
+                               ILogger<SettlementService> logger, HttpClient httpClient)
         {
             _context = context;
+            _configuration = configuration;
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
+            _httpClient = httpClient;
         }
 
         public async Task<DataprocessResponse> DoDataprocessAsync(DataprocessRequest request)
@@ -91,7 +96,7 @@ namespace ETCGatewayAPI.Services
                     BatchProcessId = batchProcessId,
                     TotalAmount = transactionsToProcess.Sum(x => x.TransactionAmount),
                     TxnCount = transactionsToProcess.Count,
-                    BankAccountNo = string.Empty,
+                    BankAccountNo = _configuration["PostTransaction:ETCSettleAcct"]!,
                     Status = SettlementStatus.Processing,
                     ProcessBrCode = request.BrCode,
                     ProcessedBy = request.UserId,
@@ -174,7 +179,7 @@ namespace ETCGatewayAPI.Services
                 }
 
                 // ৪. প্রথম ট্রানজেকশনের BatchProcessId দিয়ে Settlement রেকর্ড খোঁজা
-                string batchProcessId = transactionsToSettle[0].BatchProcessId;
+                string batchProcessId = transactionsToSettle[0].BatchProcessId!;
                 var settleRecord = await _context.Settlements
                     .FirstOrDefaultAsync(t => t.BatchProcessId == batchProcessId);
 
@@ -191,16 +196,13 @@ namespace ETCGatewayAPI.Services
                 // ৫. Eihher Toll Operation প্রসেসিং
                 if (request.SettlementOperation.Equals(SettlementOperation.Toll, StringComparison.OrdinalIgnoreCase))
                 {
-                    // CBS Integration
-                    var cbsResult = await SendToCbsAsync(settleRecord);
+                    // CBS call
+                    var CbsResponse = await SendToCbsAsync(settleRecord.TotalAmount, settleRecord.SettleBrCode, settleRecord.BatchProcessId);
 
-                    // TODO: cbsResult.IsSuccess চেক যুক্ত করুন
-                    if (cbsResult.IsSuccess)
+                    if (CbsResponse.Status == "200" || CbsResponse.Status == "1004")
                     {
                         // Settlements টেবিল আপডেট
-                        settleRecord.CBSRef = ""; // cbsResult থেকে প্রাপ্ত রেফারেন্স আইডি
-                        settleRecord.BankAccountNo = "";
-                        settleRecord.CBSResponse = "";
+                        settleRecord.CBSResponse = JsonConvert.SerializeObject(CbsResponse);
 
                         settleRecord.SettledBy = request.UserId;
                         settleRecord.SettleBrCode = request.BrCode;
@@ -212,6 +214,16 @@ namespace ETCGatewayAPI.Services
                         {
                             txn.SettlStatus = SettlementStatus.Settled;
                         }
+
+                    }
+                    else
+                    {
+                        return new SettlementResponse
+                        {
+                            HttpCode = 405,
+                            HttpStatus = "Not Found",
+                            Message = $"SendToCBS Failed for BatchProcessId: {batchProcessId}. Please Try again."
+                        };
                     }
                 }
                 // ৬. Or TopUp Operation প্রসেসিং
@@ -255,52 +267,76 @@ namespace ETCGatewayAPI.Services
             }
         }
 
-        /// <summary>
-        /// CBS (Core Banking System) এপিআই-তে সেটেলমেন্ট রিকোয়েস্ট পাঠানোর প্লেসহোল্ডার মেথড।
-        /// আসল সিবিএস ইন্টিগ্রেশনের সময় এখানে সিবিএস সার্ভিস কল এবং রেসপন্স পার্সিং যোগ করতে হবে।
-        /// </summary>
-        private async Task<CbsResponseModel> SendToCbsAsync(Settlement settleRecord)
+        public async Task<PostTransactionResponse> SendToCbsAsync(decimal totalAmount, string settleBrCode, string batchProcessId)
         {
+            var postTransactionResponse = new PostTransactionResponse();
+            string batchDateStr = DateTime.Now.ToString("yyyy-MM-dd");
+            string narration = $"{batchProcessId}|{settleBrCode}|{batchDateStr}";
+
+            var postTransactionRequest = new PostTransactionRequest()
+            {
+                UserName = _configuration["PostTransaction:UserName"]!,
+                ServiceCode = _configuration["PostTransaction:ServiceCode"]!,
+                SpCode = _configuration["PostTransaction:SpCode"]!,
+                ChannelId = _configuration["PostTransaction:ChannelId"]!,
+                ReferenceNo = batchProcessId,
+                ReferenceDate = batchDateStr,
+                OrigBrnCode = settleBrCode,
+                BatchNarration = batchProcessId,
+                Debits = new List<Debit>(),
+                Credits = new List<Credit>()
+            };
+
+            if (totalAmount > 0)
+            {
+                // Debit Portion (GL Account)
+                postTransactionRequest.Debits.Add(new Debit()
+                {
+                    GlAccCode = _configuration["PostTransaction:ETCParkingGL"]!,
+                    GlBrnCode = settleBrCode,
+                    Amount = totalAmount,
+                    Narration = narration,
+                    CreditNarration = narration
+                });
+
+                // Credit Portion (Settlement Account)
+                postTransactionRequest.Credits.Add(new Credit()
+                {
+                    AccountNumber = _configuration["PostTransaction:ETCSettleAcct"]!,
+                    Amount = totalAmount,
+                    Narration = narration,
+                    DebitNarration = narration
+                });
+            }
+
             try
             {
-                _logger.LogInformation("Initiating CBS Settlement call. BatchProcessId: {BatchId}, Amount: {Amount}",
-                    settleRecord.BatchProcessId, settleRecord.TotalAmount);
+                string baseUrl = _configuration["PostTransaction:BaseUrl"]!;
+                string requestUrl = $"{baseUrl.TrimEnd('/')}/PostTransaction";
+                _logger.LogInformation("SendToCbsAsync Request: {Request}", JsonConvert.SerializeObject(postTransactionRequest));
 
-                // TODO: আসল CBS API ইন্টিগ্রেশন কোড এখানে যুক্ত হবে
-                // উদাহরণ: var cbsResult = await _cbsApiClient.PostSettlementAsync(payload);
+                // Inject করা _httpClient ব্যবহার করা হয়েছে
+                var response = await _httpClient.PostAsJsonAsync(requestUrl, postTransactionRequest);
 
-                await Task.Delay(100); // অ্যাসিনক্রোনাস কলের সিমুলেশন
-
-                // মক সফল রেসপন্স (CBS ইন্টিগ্রেশন সম্পন্ন হলে এটি ডায়নামিক হবে)
-                return new CbsResponseModel
+                if (response.IsSuccessStatusCode)
                 {
-                    IsSuccess = true,
-                    CbsRef = $"CBS{DateTime.UtcNow:yyyyMMddHHmmss}",
-                    BankAccountNo = "1001002003004", // নির্দিষ্ট সিস্টেম অ্যাকাউন্ট নম্বর
-                    ResponseMessage = "Successfully posted to CBS"
-                };
+                    postTransactionResponse = await response.Content.ReadFromJsonAsync<PostTransactionResponse>()
+                                              ?? new PostTransactionResponse();
+
+                    _logger.LogInformation("SendToCbsAsync Result: {Result}", JsonConvert.SerializeObject(postTransactionResponse));
+                }
+                else
+                {
+                    string errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("SendToCbsAsync HTTP Error {StatusCode}: {Error}", response.StatusCode, errorContent);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "CBS Service Call Failed for BatchProcessId: {BatchId}", settleRecord.BatchProcessId);
-
-                return new CbsResponseModel
-                {
-                    IsSuccess = false,
-                    CbsRef = string.Empty,
-                    BankAccountNo = string.Empty,
-                    ResponseMessage = $"CBS Connection Error: {ex.Message}"
-                };
+                _logger.LogError(ex, "SendToCbsAsync Exception occurred");
             }
-        }
 
-        // CBS রেসপন্স মডেল
-        public class CbsResponseModel
-        {
-            public bool IsSuccess { get; set; }
-            public string CbsRef { get; set; } = string.Empty;
-            public string BankAccountNo { get; set; } = string.Empty;
-            public string ResponseMessage { get; set; } = string.Empty;
+            return postTransactionResponse;
         }
     }
 }
