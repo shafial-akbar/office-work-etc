@@ -1,0 +1,233 @@
+{
+	"info": {
+		"_postman_id": "30401696-29a2-4f3d-8439-b1a10fb32a19",
+		"name": "ETC",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "2947589"
+	},
+	"item": [
+		{
+			"name": "http://10.32.20.37:7799/api/request?___url___=http://10.110.10.110:8090/api/v2/login",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "authorization",
+						"value": "Basic Legacy2014|Legacy20142018"
+					},
+					{
+						"key": "aPI_KEY",
+						"value": "I love my Life"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Cookie",
+						"value": "f5avraaaaaaaaaaaaaaaa_session_=DFBNKKCAJFJPODABCPAKMALHEENBOLFFOAAMLKMIACPDOIOFKPIGJOKLKJHKBNLCGCJDICPABGMENHJGKGMAPAGNPBKJFLCFHOBHCFAOJKKINDIGKCKHONCMMFBAFJPM; SBL_COOKIE=257171466.28193.0000"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"username\": \"SONALI\",\n    \"password\": \"So@6$%8\"\n}\n\n\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://10.32.20.37:7799/api/request?___url___=http://10.110.10.110:8090/api/v2/login",
+					"protocol": "http",
+					"host": [
+						"10",
+						"32",
+						"20",
+						"37"
+					],
+					"port": "7799",
+					"path": [
+						"api",
+						"request"
+					],
+					"query": [
+						{
+							"key": "___url___",
+							"value": "http://10.110.10.110:8090/api/v2/login"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "http://10.32.20.37:7799/api/request?___url___=http://10.110.10.110:8090/api/v2/wallet/vehicle-info",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJTT05BTEkiLCJyb2xlcyI6W3siYXV0aG9yaXR5IjoiUk9MRV9CQU5LX1VTRVIifV0sImlhdCI6MTc0ODg0ODM3NCwiZXhwIjoxNzQ4ODkxNTc0fQ.7pSgSBIqov0xcuW0WKkDLH2hbTM_YrRDlchXG3QHaCY"
+					},
+					{
+						"key": "aPI_KEY",
+						"value": "I love my Life"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Cookie",
+						"value": "f5avraaaaaaaaaaaaaaaa_session_=DFBNKKCAJFJPODABCPAKMALHEENBOLFFOAAMLKMIACPDOIOFKPIGJOKLKJHKBNLCGCJDICPABGMENHJGKGMAPAGNPBKJFLCFHOBHCFAOJKKINDIGKCKHONCMMFBAFJPM; SBL_COOKIE=257171466.28193.0000",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"vehicleRegistrationNumber\": \"DHAKA METRO-GA-37-1935\",\n    \"companyOid\": \"6\"\n}\n\n\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://10.32.20.37:7799/api/request?___url___=http://10.110.10.110:8090/api/v2/wallet/vehicle-info",
+					"protocol": "http",
+					"host": [
+						"10",
+						"32",
+						"20",
+						"37"
+					],
+					"port": "7799",
+					"path": [
+						"api",
+						"request"
+					],
+					"query": [
+						{
+							"key": "___url___",
+							"value": "http://10.110.10.110:8090/api/v2/wallet/vehicle-info"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "http://10.32.20.37:7799/api/request?___url___=http://10.110.10.110:8090/api/v2/wallet/register-vehicle",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJTT05BTEkiLCJyb2xlcyI6W3siYXV0aG9yaXR5IjoiUk9MRV9CQU5LX1VTRVIifV0sImlhdCI6MTc0ODg0ODM3NCwiZXhwIjoxNzQ4ODkxNTc0fQ.7pSgSBIqov0xcuW0WKkDLH2hbTM_YrRDlchXG3QHaCY"
+					},
+					{
+						"key": "aPI_KEY",
+						"value": "I love my Life"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Cookie",
+						"value": "f5avraaaaaaaaaaaaaaaa_session_=DFBNKKCAJFJPODABCPAKMALHEENBOLFFOAAMLKMIACPDOIOFKPIGJOKLKJHKBNLCGCJDICPABGMENHJGKGMAPAGNPBKJFLCFHOBHCFAOJKKINDIGKCKHONCMMFBAFJPM; SBL_COOKIE=257171466.28193.0000",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"vehicleRegistrationNumber\": \"DHAKA METRO-GA-37-1935\",\n    \"companyOid\": 6,\n    \"mobileNumber\": \"01711444444\",\n    \"walletNumber\": \"01711444444\",\n    \"description\": \"Requesting for vehicle info form SBL PLC\",\n    \"currentBalance\": \"0\",\n    \"dueBalance\": \"0\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://10.32.20.37:7799/api/request?___url___=http://10.110.10.110:8090/api/v2/wallet/register-vehicle",
+					"protocol": "http",
+					"host": [
+						"10",
+						"32",
+						"20",
+						"37"
+					],
+					"port": "7799",
+					"path": [
+						"api",
+						"request"
+					],
+					"query": [
+						{
+							"key": "___url___",
+							"value": "http://10.110.10.110:8090/api/v2/wallet/register-vehicle"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "http://10.32.20.37:7799/api/request?___url___=http://10.110.10.110:8090/api/v2/wallet/unregister-vehicle",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJTT05BTEkiLCJyb2xlcyI6W3siYXV0aG9yaXR5IjoiUk9MRV9CQU5LX1VTRVIifV0sImlhdCI6MTc0ODg0ODM3NCwiZXhwIjoxNzQ4ODkxNTc0fQ.7pSgSBIqov0xcuW0WKkDLH2hbTM_YrRDlchXG3QHaCY"
+					},
+					{
+						"key": "aPI_KEY",
+						"value": "I love my Life"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Cookie",
+						"value": "f5avraaaaaaaaaaaaaaaa_session_=DFBNKKCAJFJPODABCPAKMALHEENBOLFFOAAMLKMIACPDOIOFKPIGJOKLKJHKBNLCGCJDICPABGMENHJGKGMAPAGNPBKJFLCFHOBHCFAOJKKINDIGKCKHONCMMFBAFJPM; SBL_COOKIE=257171466.28193.0000",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"vehicleRegistrationNumber\": \"DHAKA METRO-GA-37-1935\",\n    \"walletNumber\": \"01711444444\",\n    \"companyOid\": 6,\n    \"status\": 0\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://10.32.20.37:7799/api/request?___url___=http://10.110.10.110:8090/api/v2/wallet/unregister-vehicle",
+					"protocol": "http",
+					"host": [
+						"10",
+						"32",
+						"20",
+						"37"
+					],
+					"port": "7799",
+					"path": [
+						"api",
+						"request"
+					],
+					"query": [
+						{
+							"key": "___url___",
+							"value": "http://10.110.10.110:8090/api/v2/wallet/unregister-vehicle"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

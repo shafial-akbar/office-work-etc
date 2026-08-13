@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ETCS Diagrams Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        h2 {
+            color: #3498db;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .diagram-container {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 30px;
+            border-radius: 5px;
+            background-color: #fff;
+        }
+        .mermaid {
+            max-width: 100%;
+            height: auto;
+        }
+        .instructions {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #3498db;
+        }
+        .btn {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Electronic Toll Collection System (ETCS) - Flow Diagrams</h1>
+
+        <div class="instructions">
+            <h3>How to Save Diagrams as Images:</h3>
+            <ol>
+                <li>Right-click on any diagram and select "Save image as..."</li>
+                <li>Or use browser print function (Ctrl+P) and save as PDF</li>
+                <li>For best quality, zoom to 100% before saving</li>
+            </ol>
+            <button class="btn" onclick="window.print()">Print/Save All Diagrams</button>
+        </div>
+
+        <div class="diagram-container">
+            <h2>1. Vehicle Registration Flow Diagram</h2>
+            <div class="mermaid">
+                flowchart TD
+                    A[Vehicle Owner] -->|Submits registration| B[Bank's ETCS]
+                    B -->|Forwards details| C[Toll Plaza System]
+                    C -->|Validates vehicle| D[Verification]
+                    D -->|Success| E[ETC Registration]
+                    D -->|Failure| F[Rejection Notice]
+                    E -->|Confirmation| B
+                    B -->|Creates Virtual Account| G[Virtual Account]
+                    G -->|Shares details| C
+                    C -->|Confirms eligibility| A
+            </div>
+        </div>
+
+        <div class="diagram-container">
+            <h2>2. Vehicle De-Registration Flow Diagram</h2>
+            <div class="mermaid">
+                flowchart TD
+                    A[Vehicle Owner] -->|Submits de-registration| B[Bank's ETCS]
+                    B -->|Forwards request| C[Toll Plaza System]
+                    C -->|Processes request| D[De-registration]
+                    D -->|Success| E[Confirmation]
+                    D -->|Failure| F[Error Notice]
+                    E -->|Update systems| B
+                    B -->|Notifies owner| A
+            </div>
+        </div>
+
+        <div class="diagram-container">
+            <h2>3. Vehicle Top-up Flow Diagram</h2>
+            <div class="mermaid">
+                flowchart TD
+                    A[Vehicle Owner] -->|Initiates top-up| B[Bank's ETCS]
+                    B -->|Mobile App/Online/Branch| C[Payment Processing]
+                    C -->|Validates payment| D[Balance Update]
+                    D -->|Success| E[ETC Eligibility]
+                    D -->|Failure| F[Error Notice]
+                    E -->|Confirmation| A
+                    A -->|Balance inquiry| B
+                    B -->|Displays balance| A
+            </div>
+        </div>
+
+        <div class="diagram-container">
+            <h2>4. Toll Plaza Pass Flow Diagram</h2>
+            <div class="mermaid">
+                flowchart TD
+                    A[Vehicle] -->|Enters ETC lane| B[RFID Reader]
+                    B -->|Detects vehicle| C[Toll Plaza System]
+                    C -->|Validates registration| D[Vehicle Check]
+                    D -->|Success| E[Authorization Request]
+                    D -->|Failure| F[Access Denied]
+                    E -->|To Bank's ETCS| G[Bank's ETCS]
+                    G -->|Checks balance| H[Balance Verification]
+                    H -->|Sufficient| I[Toll Deduction]
+                    H -->|Insufficient| J[Rejection]
+                    I -->|Authorization| C
+                    C -->|Opens gate| K[Vehicle Pass]
+                    K -->|SMS notification| A
+            </div>
+        </div>
+
+        <div class="diagram-container">
+            <h2>5. Settlement Flow Diagram</h2>
+            <div class="mermaid">
+                flowchart TD
+                    A[End of Day] -->|Trigger| B[Bank Reconciliation]
+                    B -->|Collects transactions| C[Bank's ETCS]
+                    C -->|Verifies amounts| D[Reconciliation]
+                    D -->|Success| E[Fund Transfer]
+                    D -->|Discrepancy| F[Investigation]
+                    E -->|To Toll Plaza Authority| G[Settlement Bank]
+                    G -->|Processes transfer| H[Toll Plaza Account]
+                    H -->|a-Challan processing| I[Confirmation]
+                    I -->|To Bank's ETCS| C
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>Diagram Key</h3>
+            <ul>
+                <li><strong>Rectangles</strong>: Processes/Steps</li>
+                <li><strong>Diamonds</strong>: Decision Points</li>
+                <li><strong>Arrows</strong>: Data/Control Flow</li>
+                <li><strong>Blue</strong>: Bank's ETCS</li>
+                <li><strong>Green</strong>: Toll Plaza System</li>
+                <li><strong>Orange</strong>: Vehicle Owner Actions</li>
+                <li><strong>Purple</strong>: Financial Transactions</li>
+                <li><strong>Red</strong>: Error/Failure Paths</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            }
+        });
+
+        // Re-render diagrams when window is resized
+        window.addEventListener('resize', function() {
+            mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+        });
+    </script>
+</body>
+</html>
