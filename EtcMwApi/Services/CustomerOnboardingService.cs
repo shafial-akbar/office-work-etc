@@ -29,40 +29,66 @@ namespace EtcMwApi.Services
 
         public async Task<Vehicle> AddVehicleToWalletAsync(AddVehicleToWalletDto dto)
         {
+            // ১. লোকাল ডাটাবেজ প্রাক-যাচাই (Transaction-এর প্রয়োজন নেই)
             var wallet = await _context.Wallets.FindAsync(dto.WalletId)
                 ?? throw new KeyNotFoundException($"Wallet not found with ID: {dto.WalletId}");
 
             await ValidateLocalVehicleExistenceAsync(dto.VehicleRegistrationNumber);
 
-            // 1. Common External Check
+            // ২. এক্সটার্নাল RHD ইনকোয়ারি
             var rhdVehicleData = await FetchAndValidateRhdVehicleAsync(dto.VehicleRegistrationNumber, dto.CompanyOid);
 
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            // ৩. আগে RHD API-তে রেজিস্ট্রেশন সম্পন্ন করা
+            await ConfirmRhdRegistrationAsync(
+                dto.VehicleRegistrationNumber,
+                wallet.MobileNo,
+                wallet.WalletNo,
+                dto.CompanyOid,
+                "Vehicle linked to existing wallet via Onboarding");
+
+            // ৪. লোকাল ডাটাবেজে সেভ করা এবং Compensation Logic রাখা
             try
             {
-                // 2. Common Mapping
                 var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
 
                 await _context.Vehicles.AddAsync(vehicle);
                 await _context.SaveChangesAsync();
 
-                // 3. Common Remote Registration
-                await ConfirmRhdRegistrationAsync(
-                    dto.VehicleRegistrationNumber,
-                    wallet.MobileNo,
-                    wallet.WalletNo,
-                    dto.CompanyOid,
-                    "Vehicle linked to existing wallet via Onboarding");
+                _logger.LogInformation("New vehicle {RegNo} successfully added to Wallet {WalletNo}",
+                    vehicle.VehicleRegistrationNumber, wallet.WalletNo);
 
-                await transaction.CommitAsync();
-                _logger.LogInformation("New vehicle {RegNo} successfully added to Wallet {WalletNo}", vehicle.VehicleRegistrationNumber, wallet.WalletNo);
                 return vehicle;
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
-                _logger.LogError(ex, "Failed to add vehicle to wallet. DB rolled back.");
-                throw;
+                _logger.LogError(ex, "Local DB save failed for vehicle {RegNo} after successful RHD Registration. Initiating RHD Compensation (Unregister)...",
+                    dto.VehicleRegistrationNumber);
+
+                // 5. Compensating Transaction: লোকাল DB ফেল করলে RHD-র রেজিস্ট্রেশন রিভার্ট (Unregister) করা
+                try
+                {
+                    var unregisterRequest = new VehicleUnregisterRequest
+                    {
+                        VehicleRegistrationNumber = dto.VehicleRegistrationNumber,
+                        CompanyOid = dto.CompanyOid,
+                        WalletNumber = wallet.WalletNo,
+                        Status = 0 // Inactive
+                    };
+
+                    var unregisterResult = await _rhdApiService.UnregisterVehicle(unregisterRequest);
+                    if (!unregisterResult.Success)
+                    {
+                        _logger.LogCritical("CRITICAL: Failed to compensate/unregister vehicle {RegNo} on RHD! Manual intervention required. Error: {Message}",
+                            dto.VehicleRegistrationNumber, unregisterResult.Message);
+                    }
+                }
+                catch (Exception rollbackEx)
+                {
+                    _logger.LogCritical(rollbackEx, "CRITICAL: Exception occurred while trying to compensate/unregister vehicle {RegNo} from RHD.",
+                        dto.VehicleRegistrationNumber);
+                }
+
+                throw new InvalidOperationException("Failed to save vehicle details in local database. The RHD registration has been reverted.", ex);
             }
         }
 
