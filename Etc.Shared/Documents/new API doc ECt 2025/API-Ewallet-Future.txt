@@ -1,0 +1,153 @@
+must delete - 2025-Dummy , from code 
+
+-------------------------------------
+
+Basic Authentication
+
+user : sonali pass: Sblwallet@$2021
+
+Basic c29uYWxpOlNibHdhbGxldEAkMjAyMQ==
+
+=================eWallet API =====================
+
+1. Get Wallet Enquery
+
+      url: http://10.32.84.5:6767/SBLWalletBanking/eWallet/getWalletDetails
+		request: {
+			   "mobileNo":"01710563521",
+    			   "userId":"Agx01254"
+                   }
+
+		response:
+			
+			{
+                  "status":"200",--200=success,203=fail,401=unauthorize,206=data error
+			"statsDetails":"Success",
+			"name":"Md. Hasan Monsur",
+			"walletStatus":"",-- need code list			
+			"PID":"19843323001190673",--NID/SID/BC/PP
+			"dateOfBirth":"1984-01-03",
+			"fatherName":"Md. Abdus Salam",
+			"motherName":"Most Hasina Begom",
+			"email":"hasan.monsur@sonalibank.com.bd",
+			"balanceAmount":"5000",
+			acList:[
+			{
+				"accountNo":"0002634313655",
+				"accountName":"Md. Hasan Monsur",
+				"branchName":"Local Office",
+				"branchCode":"00026"
+			}]
+
+
+
+2. Fund Transfer ( Payment )
+
+
+curl -X POST \
+  http://10.32.84.5:6767/SBLWalletBanking/eWallet/FundTransfer \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "WalletNo": "1234567890",
+    "Amount": 1000.50,
+    "InvoiceNumber": "INV-2023-001",
+    "ServiceId": "ETC"
+  }'
+
+
+
+Response:
+{
+    "WalletNo": "1234567890",
+    "Amount": 1000.50,
+    "InvoiceNumber": "INV-2023-001",
+    "StatusCode": "200",
+    "TranId": "TXN123456789",
+    "TranDate": "2023-11-15T14:30:45",
+    "StatusMessage": "Transaction completed successfully"
+}
+
+
+
+
+3. Fund Transfer ( Payment Reverse)
+
+
+curl -X POST \
+  http://10.32.84.5:6767/SBLWalletBanking/eWallet/FundTransferReverse \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "InvoiceNumber": "INV-2023-001"
+  }'
+
+
+Response:
+
+{
+  "WalletNo": "017XXXXXXXX",
+  "Amount": 500.00,
+  "TranDate": "2022-02-23T11:30:01.000",
+  "InvoiceNumber": "INV123456789",
+  "StatusCode": "200",
+  "TranId": "TRN987654321",
+  "StatusMessage": "Transaction successful"
+}
+
+
+
+Advance API for Reconciliation:
+------------------------------------------------
+
+4. Date Range Transaction History
+
+curl -X POST \
+  http://10.32.84.5:6767/SBLWalletBanking/eWallet/FundTransferHistory \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "FromDate": "2025-06-01",
+    "ToDate": "2025-06-01",
+    "ServiceId": "ETC"
+
+  }'
+
+
+Response:
+
+[
+  {
+  "WalletNo": "017XXXXXXXX",
+  "Amount": 500.00,
+  "TranDate": "2022-02-23T11:30:01.000",
+  "InvoiceNumber": "INV123456789",
+  "StatusCode": "200",
+  "TranId": "TRN987654321",
+  "StatusMessage": "Transaction successful"
+
+  }
+]
+
+
+5. Process Daily Settlement
+
+curl -X POST \
+  http://10.32.84.5:6767/SBLWalletBanking/eWallet/SettlementProcess \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "FromDate": "2025-06-01",
+    "ToDate": "2025-06-01",
+    "ServiceId": "ETC"
+    "ProcessId": "20250603"
+
+  }'
+
+
+Response:
+{
+  "ProcessId": "20250603",
+  "Amount": 500.00,
+  "TranDate": "2022-02-23T11:30:01.000",  
+  "TranId": "TRN987654321",
+  "StatusCode": "200",
+  "StatusMessage": "Transaction successful"
+}
+
