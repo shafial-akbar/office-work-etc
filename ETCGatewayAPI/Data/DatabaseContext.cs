@@ -103,6 +103,16 @@ namespace ETCGatewayAPI.Data
             // 6. RequestLog & ApiToken
             modelBuilder.Entity<RequestLog>().HasKey(r => r.Id);
             modelBuilder.Entity<ApiToken>().HasKey(t => t.Id);
+
+            // 7. Global Table Prefix (TBL_) Application
+            foreach (var entity in modelBuilder.Model.GetEntityTypes())
+            {
+                var currentTableName = entity.GetTableName();
+                if (!string.IsNullOrEmpty(currentTableName))
+                {
+                    entity.SetTableName($"TBL_{currentTableName}");
+                }
+            }
         }
     }
 }
