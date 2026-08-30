@@ -95,7 +95,7 @@ namespace EtcMwApi.Data
             modelBuilder.Entity<Settlement>(entity =>
             {
                 entity.HasKey(e => e.Id);
-                entity.HasIndex(e => e.ProcessId).IsUnique();
+                entity.HasIndex(e => e.BatchProcessId).IsUnique();
                 entity.Property(e => e.TotalAmount).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.Status).HasDefaultValue("Pending");
             });
