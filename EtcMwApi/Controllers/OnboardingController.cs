@@ -7,7 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace EtcMwApi.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    //[Route("api/[controller]")]
+    [Route("api")]
     [Authorize] // 🔒 পুরো কন্ট্রোলারের সব API সুরক্ষিত থাকবে
     public class OnboardingController : ControllerBase
     {

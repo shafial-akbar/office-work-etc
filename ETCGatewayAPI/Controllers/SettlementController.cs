@@ -8,7 +8,8 @@ using Microsoft.AspNetCore.Authorization;
 namespace EtcMwApi.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    //[Route("api/[controller]")]
+    [Route("api")]
     [Authorize]
     public class SettlementController : ControllerBase
     {

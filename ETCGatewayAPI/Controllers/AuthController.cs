@@ -17,7 +17,8 @@ using Microsoft.EntityFrameworkCore;
 namespace ETCGatewayAPI.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    //[Route("api/[controller]")]
+    [Route("api")]
     [AllowAnonymous]
     public class AuthController : Controller
     {
