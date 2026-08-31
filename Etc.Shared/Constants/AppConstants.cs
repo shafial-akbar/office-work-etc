@@ -93,4 +93,9 @@ namespace Etc.Shared.Constants
         public const string Settlement = "Settlement"; // For EOD Disbursement/Settlement Batch (Status: Settled)
         public const string Reversal = "Reversal";             // ৪. Only Reversed Transactions (অডিট ও রিফান্ড ট্রেসিং)
     }
+
+    public static class CompanyConfig
+    {
+        public const int DefaultCompanyOid = 6;
+    }
 }

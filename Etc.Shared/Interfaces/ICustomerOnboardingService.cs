@@ -5,9 +5,9 @@ namespace Etc.Shared.Interfaces
 {
     public interface ICustomerOnboardingService
     {
-        Task<Vehicle> AddVehicleToWalletAsync(AddVehicleToWalletDto dto);
-        Task<Wallet> CreateNewWalletAsync(CreateNewWalletDto dto);
+        Task<VehicleOnboardingResponseDto> AddVehicleToWalletAsync(AddVehicleToWalletDto dto);
+        Task<VehicleOnboardingResponseDto> CreateNewWalletAsync(CreateNewWalletDto dto);
         Task<CustomerOnboardingResponseDto> RegisterFullCustomerAsync(RegisterFullCustomerDto dto);
-        Task<ApiResponse<Wallet>> UnregisterVehicleAsync(VehicleUnregisterRequest request);
+        Task<ApiResponse<Wallet>> UnregisterVehicleAsync(VehicleUnregisterDto request);
     }
 }

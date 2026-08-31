@@ -126,7 +126,7 @@ namespace EtcMwApi.Controllers
             try
             {
                 var customer = await _onboardingService.RegisterFullCustomerAsync(dto);
-                var response = new { Success = true, Message = "New customer enrolled with virtual wallet and Vehicle.", Data = customer };
+                var response = new { Success = true, Message = customer.Message, Data = customer };
 
                 await _requestLogService.LogResponse(logId, response);
                 return Ok(response);
@@ -165,7 +165,7 @@ namespace EtcMwApi.Controllers
             try
             {
                 var vehicle = await _onboardingService.AddVehicleToWalletAsync(dto);
-                var response = new { Success = true, Message = "Vehicle linked to wallet successfully.", Data = vehicle };
+                var response = new { Success = true, Message = vehicle.Message, Data = vehicle };
 
                 await _requestLogService.LogResponse(logId, response);
                 return Ok(response);
@@ -203,7 +203,7 @@ namespace EtcMwApi.Controllers
             try
             {
                 var wallet = await _onboardingService.CreateNewWalletAsync(dto);
-                var response = new { Success = true, Message = "New wallet created successfully.", Data = wallet };
+                var response = new { Success = true, Message = wallet.Message, Data = wallet };
 
                 await _requestLogService.LogResponse(logId, response);
                 return Ok(response);
@@ -229,7 +229,7 @@ namespace EtcMwApi.Controllers
         }
 
         [HttpPost("unregister-vehicle")]
-        public async Task<IActionResult> UnregisterVehicle([FromBody] VehicleUnregisterRequest request)
+        public async Task<IActionResult> UnregisterVehicle([FromBody] VehicleUnregisterDto request)
         {
             if (!ModelState.IsValid)
             {
