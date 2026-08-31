@@ -26,8 +26,8 @@ namespace ETCGatewayAPI.Controllers
             _walletTransactionService = walletTransactionService;
         }
 
-        [HttpGet("check-status")]
-        public async Task<IActionResult> CheckStatus([FromQuery] string mobileNo)
+        [HttpGet("check-account")]
+        public async Task<IActionResult> CheckAccount([FromQuery] string mobileNo)
         {
             var logId = await _requestLogService.LogRequest(Request);
 

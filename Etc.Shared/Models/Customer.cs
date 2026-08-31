@@ -1,6 +1,7 @@
 ﻿using System;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Etc.Shared.Models
 {
@@ -21,6 +22,7 @@ namespace Etc.Shared.Models
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
         // Fixed: Collection Initialized
+        [JsonIgnore]
         public ICollection<Wallet> Wallets { get; set; } = new List<Wallet>();
     }    
 }

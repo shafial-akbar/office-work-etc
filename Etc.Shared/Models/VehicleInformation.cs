@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace Etc.Shared.Models
 {
@@ -20,7 +21,7 @@ namespace Etc.Shared.Models
         // Fixed: Made Nullable
         public DateTime? UnregisterDate { get; set; }
 
-        // Fixed: Nullability
+        [JsonIgnore]
         public Wallet Wallet { get; set; } = null!;
     }
 }

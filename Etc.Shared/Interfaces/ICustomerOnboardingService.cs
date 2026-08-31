@@ -7,7 +7,7 @@ namespace Etc.Shared.Interfaces
     {
         Task<Vehicle> AddVehicleToWalletAsync(AddVehicleToWalletDto dto);
         Task<Wallet> CreateNewWalletAsync(CreateNewWalletDto dto);
-        Task<Customer> RegisterFullCustomerAsync(RegisterFullCustomerDto dto);
+        Task<CustomerOnboardingResponseDto> RegisterFullCustomerAsync(RegisterFullCustomerDto dto);
         Task<ApiResponse<Wallet>> UnregisterVehicleAsync(VehicleUnregisterRequest request);
     }
 }

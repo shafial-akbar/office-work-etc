@@ -1,6 +1,8 @@
 ﻿using System;
-using System.ComponentModel.DataAnnotations.Schema;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace Etc.Shared.Models
 {
@@ -12,8 +14,7 @@ namespace Etc.Shared.Models
         public Guid CustomerId { get; set; }
 
         [Required]
-        [StringLength(14, MinimumLength = 14, ErrorMessage = "WalletNo must be exactly 14 digits.")]
-        [RegularExpression(@"^99\d{12}$", ErrorMessage = "WalletNo must start with '99' followed by 12 digits.")]
+        [StringLength(13, MinimumLength = 13, ErrorMessage = "WalletNo must be exactly 13 digits.")]
         public string WalletNo { get; set; } = string.Empty;
 
         public string MobileNo { get; set; } = string.Empty;
@@ -26,9 +27,13 @@ namespace Etc.Shared.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-        // Fixed: Nullability & Collections Initialized
+        [JsonIgnore]
         public Customer Customer { get; set; } = null!;
+
+        [JsonIgnore]
         public ICollection<DoTransaction> DoTransactions { get; set; } = new List<DoTransaction>();
+
+        [JsonIgnore]
         public ICollection<Vehicle> Vehicles { get; set; } = new List<Vehicle>();
     }
 }

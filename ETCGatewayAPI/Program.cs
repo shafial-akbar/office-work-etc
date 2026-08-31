@@ -11,7 +11,9 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Text;
 using System;
+using EtcMwApi.Services;
 
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 // WebApplicationBuilder ইন্সট্যান্স তৈরি ও অ্যাপ্লিকেশনের সার্ভিস কনফিগারেশন সূচনা
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,6 +30,11 @@ builder.Services.AddDbContext<DatabaseContext>(options =>
 // =========================================================================
 // অ্যাপ্লিকেশন লেভেলের বিজনেস লজিক সার্ভিসসমূহ Scope স্পেসিফিকেশনসহ ইনজেক্ট করা হচ্ছে (Per HTTP Request Lifetime)
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICustomerOnboardingService, CustomerOnboardingService>();
+builder.Services.AddScoped<ICustomerInquiryService, CustomerInquiryService>();
+builder.Services.AddScoped<IRequestLogService, RequestLogService>();
+
+builder.Services.AddScoped<IRhdApiService, RhdApiService>();
 builder.Services.AddScoped<IDoTranService, TranService>();
 builder.Services.AddScoped<IWalletTransactionService, WalletTransactionService>();
 

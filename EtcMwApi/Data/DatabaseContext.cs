@@ -40,8 +40,8 @@ namespace EtcMwApi.Data
 
                 entity.Property(e => e.WalletNo)
                       .IsRequired()
-                      .HasMaxLength(14)
-                      .IsFixedLength(); // CHAR(14) in PostgreSQL
+                      .HasMaxLength(13)
+                      .IsFixedLength(); // CHAR(13) in PostgreSQL
 
                 entity.HasIndex(e => e.MobileNo).IsUnique();
                 entity.Property(e => e.MobileNo).IsRequired().HasMaxLength(20);
@@ -103,6 +103,16 @@ namespace EtcMwApi.Data
             // 6. RequestLog & ApiToken
             modelBuilder.Entity<RequestLog>().HasKey(r => r.Id);
             modelBuilder.Entity<ApiToken>().HasKey(t => t.Id);
+
+            // 7. Global Table Prefix (TBL_) Application
+            foreach (var entity in modelBuilder.Model.GetEntityTypes())
+            {
+                var currentTableName = entity.GetTableName();
+                if (!string.IsNullOrEmpty(currentTableName))
+                {
+                    entity.SetTableName($"TBL_{currentTableName}");
+                }
+            }
         }
     }
 }

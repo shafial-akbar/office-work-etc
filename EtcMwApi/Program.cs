@@ -17,6 +17,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +26,7 @@ var builder = WebApplication.CreateBuilder(args);
 // =========================================================================
 builder.Services.AddDbContext<DatabaseContext>(options =>
     options.UseNpgsql(
-        builder.Configuration.GetConnectionString("DatabaseContext")
+        builder.Configuration.GetConnectionString("DefaultConnection")
         ?? throw new InvalidOperationException("Connection string 'DatabaseContext' not found in appsettings.json.")
     )
 );
@@ -149,12 +150,14 @@ app.UseCors("AllowAll");
 
 app.UseRouting();
 
+// Custom Middleware for Basic Authentication Handling
+app.UseMiddleware<BasicAuthMiddleware>();
+
 // Security Middlewares (Order is important)
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Custom Middleware for Basic Authentication Handling
-app.UseMiddleware<BasicAuthMiddleware>();
+
 
 // Map Controller Endpoints
 app.MapControllers();

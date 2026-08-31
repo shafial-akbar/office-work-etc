@@ -40,8 +40,8 @@ namespace ETCGatewayAPI.Data
 
                 entity.Property(e => e.WalletNo)
                       .IsRequired()
-                      .HasMaxLength(14)
-                      .IsFixedLength(); // CHAR(14) in PostgreSQL
+                      .HasMaxLength(13)
+                      .IsFixedLength(); // CHAR(13) in PostgreSQL
 
                 entity.HasIndex(e => e.MobileNo).IsUnique();
                 entity.Property(e => e.MobileNo).IsRequired().HasMaxLength(20);

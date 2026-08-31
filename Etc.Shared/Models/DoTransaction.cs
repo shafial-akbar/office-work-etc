@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace Etc.Shared.Models
 {
@@ -70,7 +71,7 @@ namespace Etc.Shared.Models
         [RegularExpression("^(SPG|Counter|Wallet|Esheba)$", ErrorMessage = "Invalid SourceChannel. Allowed values are: SPG, Counter, Wallet, Esheba")]
         public string SourceChannel { get; set; } = string.Empty;
 
-        // Fixed: Nullability
+        [JsonIgnore]
         public Wallet Wallet { get; set; } = null!;
     }    
 }

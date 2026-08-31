@@ -134,7 +134,7 @@ namespace EtcMwApi.Services
             }
         }
 
-        public async Task<Customer> RegisterFullCustomerAsync(RegisterFullCustomerDto dto)
+        public async Task<CustomerOnboardingResponseDto> RegisterFullCustomerAsync(RegisterFullCustomerDto dto)
         {
             await ValidateMobileNumberAvailabilityAsync(dto.MobileNo);
             await ValidateLocalVehicleExistenceAsync(dto.VehicleRegistrationNumber);
@@ -153,11 +153,13 @@ namespace EtcMwApi.Services
                     CustomerId = CustomerIdGenerator.GenerateCustomerId(),
                     Name = dto.CustomerName,
                     Email = dto.Email,
-                    DateOfBirth = dto.DateOfBirth,
+                    DateOfBirth = dto.DateOfBirth.HasValue
+                        ? DateTime.SpecifyKind(dto.DateOfBirth.Value, DateTimeKind.Utc)
+                        : null,
                     FatherName = dto.FatherName,
                     MotherName = dto.MotherName,
                     RegistrationDate = now,
-                    Status = CustomerStatus.Active, // Replaced "Active"
+                    Status = CustomerStatus.Active,
                     CreatedAt = now,
                     UpdatedAt = now
                 };
@@ -181,7 +183,16 @@ namespace EtcMwApi.Services
 
                 await transaction.CommitAsync();
                 _logger.LogInformation("Full customer onboarding completed successfully. CustomerId: {CustomerId}", customer.CustomerId);
-                return customer;
+
+                // 4. Response DTO Return (Circular Reference Avoided)
+                return new CustomerOnboardingResponseDto
+                {
+                    CustomerId = customer.CustomerId,
+                    Name = customer.Name,
+                    MobileNo = wallet.MobileNo,
+                    WalletNo = wallet.WalletNo,
+                    VehicleRegistrationNumber = dto.VehicleRegistrationNumber
+                };
             }
             catch (Exception ex)
             {
@@ -190,7 +201,6 @@ namespace EtcMwApi.Services
                 throw;
             }
         }
-
         public async Task<ApiResponse<Wallet>> UnregisterVehicleAsync(VehicleUnregisterRequest request)
         {
             // 1. External RHD API Call
