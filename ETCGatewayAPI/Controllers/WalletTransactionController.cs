@@ -24,7 +24,7 @@ namespace ETCGatewayAPI.Controllers
             _walletTransactionService = walletTransactionService;
         }
 
-        [HttpGet("check-account")]
+        [HttpGet("accountInquiry")]
         public async Task<IActionResult> CheckAccount([FromQuery] string mobileNo)
         {
             if (string.IsNullOrWhiteSpace(mobileNo))
@@ -68,7 +68,7 @@ namespace ETCGatewayAPI.Controllers
         }
 
         // ১. ওয়ালেট টপ-আপ (Wallet Credit)
-        [HttpPost("top-up")]
+        [HttpPost("topUp")]
         public async Task<IActionResult> TopUpWallet([FromBody] TopUpRequest topUpDto)
         {
 
@@ -92,7 +92,7 @@ namespace ETCGatewayAPI.Controllers
         }
 
         // ২. টোল কালেকশন ও ব্যালেন্স কাটা (Toll Amount Debit/Deduction)
-        [HttpPost("deduct-toll")]
+        [HttpPost("doTransaction")]
         public async Task<IActionResult> DeductToll([FromBody] DoTransactionRequest deductionDto)
         {
 
@@ -116,7 +116,7 @@ namespace ETCGatewayAPI.Controllers
         }
 
         // ৩. টোল ট্রানজেকশন রিভার্সাল বা রিফান্ড (Toll Amount Reversal/Credit)
-        [HttpPost("reverse-toll")]
+        [HttpPost("doReverse")]
         public async Task<IActionResult> ReverseToll([FromBody] ReverseTransactionRequest reversalDto)
         {
 
