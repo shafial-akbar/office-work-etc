@@ -77,10 +77,13 @@ builder.Host.UseSerilog();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
-// Swagger UI ডকুমেন্টেশন কনফিগারেশন (JWT Bearer Token দিয়ে টেস্ট করার অপশনসহ)
+// Swagger UI ডকুমেন্টেশন কনফিগারেশন (JWT Bearer Token দিয়ে টেস্ট করার অপশনসহ)
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "ETC Middleware API", Version = "v1" });
+
+    // 👈 Route Conflict (Duplicate GET api/check-account) সমাধানের জন্য এই লাইনটি যুক্ত করুন
+    c.ResolveConflictingActions(apiDescriptions => apiDescriptions.First());
 
     // Swagger UI-তে Authorization Header এনাবল করার জন্য সিকিউরিটি ডেফিনিশন যুক্তকরণ
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -108,7 +111,6 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
-
 
 // =========================================================================
 // 6. PIPELINE & MIDDLEWARE EXECUTION BUILD
