@@ -7,6 +7,6 @@ namespace Etc.Shared.Interfaces
     {
         Task<ApiResponse<Vehicle>> GetVehicleInformation(string registrationNumber, int companyOid);
         Task<ApiResponse<VehicleRegiInformation>> RegisterVehicle(VehicleRegistrationRequest request);
-        Task<ApiResponse<Wallet>> UnregisterVehicle(VehicleUnregisterRequest request);
+        Task<VehicleUnregisterResponse> UnregisterVehicle(VehicleUnregisterRequest request);
     }
 }

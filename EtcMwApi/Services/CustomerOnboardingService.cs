@@ -230,7 +230,7 @@ namespace EtcMwApi.Services
         }
 
 
-        public async Task<ApiResponse<Wallet>> UnregisterVehicleAsync(VehicleUnregisterDto dto)
+        public async Task<VehicleUnregisterResponse> UnregisterVehicleAsync(VehicleUnregisterDto dto)
         {
             var rdhRequest = new VehicleUnregisterRequest
             {
@@ -260,7 +260,7 @@ namespace EtcMwApi.Services
 
                 if (wallet == null)
                 {
-                    return new ApiResponse<Wallet>
+                    return new VehicleUnregisterResponse
                     {
                         Success = false,
                         Reason = "NOT_FOUND",
@@ -282,13 +282,13 @@ namespace EtcMwApi.Services
                     vehicle.UnregisterDate = DateTime.UtcNow;
                 }
 
-                // TODO:GL settlement queue for refund
+                // GL settlement queue for refund
                 await ProcessGlSettlementForUnregisterAsync(wallet);
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                _logger.LogInformation("Successfully unregistered vehicle {RegNo} and set status to Inactive.",
+                _logger.LogInformation("Successfully unregistered vehicle {RegNo} and set status to Inactive in local DB.",
                     dto.VehicleRegistrationNumber);
 
                 return result;
@@ -299,7 +299,7 @@ namespace EtcMwApi.Services
                 _logger.LogError(ex, "Failed to update local DB records during vehicle unregistration for RegNo: {RegNo}",
                     dto.VehicleRegistrationNumber);
 
-                return new ApiResponse<Wallet>
+                return new VehicleUnregisterResponse
                 {
                     Success = false,
                     Reason = "EXCEPTION",

@@ -1,5 +1,6 @@
 ﻿using Etc.Shared.DTOs;
 using Etc.Shared.Interfaces;
+using Etc.Shared.Models;
 using EtcMwApi.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -249,7 +250,8 @@ namespace EtcMwApi.Controllers
 
                 if (result.Success)
                 {
-                    return Ok(result);
+                    var response = new { Success = true, Message = $"Vehicle : {request.VehicleRegistrationNumber} unregistered from Wallet No : {request.WalletNo} " };
+                    return Ok(response);
                 }
 
                 return StatusCode(result.StatusCode > 0 ? result.StatusCode : 500, result);

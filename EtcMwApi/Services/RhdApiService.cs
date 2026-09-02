@@ -16,12 +16,14 @@ namespace EtcMwApi.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ApiSettings _apiSettings;
         private readonly ITokenService _tokenService;
+        private readonly ILogger<RhdApiService> _logger;
 
-        public RhdApiService(IHttpClientFactory httpClientFactory, IOptions<ApiSettings> apiSettings, ITokenService tokenService)
+        public RhdApiService(IHttpClientFactory httpClientFactory, IOptions<ApiSettings> apiSettings, ITokenService tokenService, ILogger<RhdApiService> logger)
         {
             _httpClientFactory = httpClientFactory;
             _apiSettings = apiSettings.Value;
             _tokenService = tokenService;
+            _logger = logger;
         }
 
         public async Task<ApiResponse<Vehicle>> GetVehicleInformation(string registrationNumber, int companyOid)
@@ -177,27 +179,33 @@ namespace EtcMwApi.Services
             }
         }
 
-        public async Task<ApiResponse<Wallet>> UnregisterVehicle(VehicleUnregisterRequest request)
+        private static readonly JsonSerializerOptions _jsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        public async Task<VehicleUnregisterResponse> UnregisterVehicle(VehicleUnregisterRequest request)
         {
             try
             {
-                var _httpClient = _httpClientFactory.CreateClient("RhdApiClient");
+                var httpClient = _httpClientFactory.CreateClient("RhdApiClient");
 
-                // 1. Get authentication token
+                // ১. Token সংগ্রহ
                 var token = await _tokenService.GetToken();
                 if (string.IsNullOrEmpty(token))
                 {
-                    return new ApiResponse<Wallet>
+                    return new VehicleUnregisterResponse
                     {
                         Success = false,
-                        Message = "Failed to get authentication token",
+                        Reason = "UNAUTHORIZED",
+                        Message = "Failed to get authentication token.",
                         StatusCode = 401
                     };
                 }
 
-                // 2. Prepare request to external API
-                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
+                // ২. Payload তৈরি (HTTP PUT)
                 var payload = new
                 {
                     vehicleRegistrationNumber = request.VehicleRegistrationNumber,
@@ -207,69 +215,73 @@ namespace EtcMwApi.Services
                 };
 
                 // 3. Call external API (POST request use later as PUT not woking mentioned in documentation)
-                var response = await _httpClient.PostAsJsonAsync($"{_apiSettings.BaseUrl}/api/v2/wallet/unregister-vehicle", payload);
+                var response = await httpClient.PostAsJsonAsync($"{_apiSettings.BaseUrl}/api/v2/wallet/unregister-vehicle", payload);
                 var content = await response.Content.ReadAsStringAsync();
-                var options = new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true // Handle case insensitivity
-                };
 
-                // 4. Handle successful response
+                // ৪. HTTP 200 OK Response Handling
                 if (response.IsSuccessStatusCode)
                 {
-                    var result = JsonSerializer.Deserialize<VehicleRegistrationResponse>(content, options);
+                    var rhdResult = JsonSerializer.Deserialize<RhdUnregisterResponse>(content, _jsonOptions);
 
-                    return new ApiResponse<Wallet>
+                    return new VehicleUnregisterResponse
                     {
-                        Success = result.Success,
-                        Reason = result.Reason,
-                        Message = result.Message,
-                        Data = result.Data, // The wallet info is in the 'body' property
-                        StatusCode = (int)result.Code
+                        Success = true,
+                        Reason = rhdResult?.HttpStatus ?? "OK",
+                        Message = rhdResult?.Message ?? "Wallet status updated successfully.",
+                        StatusCode = rhdResult?.HttpCode > 0 ? rhdResult.HttpCode : 200,
+                        VehicleRegistrationNumber = rhdResult?.Body?.VehicleRegistrationNumber,
+                        CompanyName = rhdResult?.Body?.CompanyName,
+                        Type = rhdResult?.Body?.Type,
+                        Status = rhdResult?.Body?.Status ?? 0
                     };
                 }
 
-                // 5. Handle specific error cases based on status code
-                switch (response.StatusCode)
+                // ৫. Error Handling (404 / 409 / Default)
+                if (response.StatusCode == HttpStatusCode.NotFound)
                 {
-                    case HttpStatusCode.NotFound:
-                        return new ApiResponse<Wallet>
-                        {
-                            Success = false,
-                            Reason ="FAILED",
-                            Message = "No wallet records exist with the specified Vehicle Registration Number",
-                            StatusCode = (int)response.StatusCode
-                        };
-
-                    case HttpStatusCode.Conflict:
-                        var conflictResponse = JsonSerializer.Deserialize<ConflictResponse>(content);
-                        return new ApiResponse<Wallet>
-                        {
-                            Success = false,
-                            Reason = "FAILED",
-                            Message = conflictResponse.Message,
-                            Data = conflictResponse.Body,
-                            StatusCode = (int)response.StatusCode
-                        };
-
-                    default:
-                        return new ApiResponse<Wallet>
-                        {
-                            Success = false,
-                            Reason = "FAILED",
-                            Message = $"API call failed: {content}",
-                            StatusCode = (int)response.StatusCode
-                        };
+                    var errorResult = JsonSerializer.Deserialize<RhdErrorResponse>(content, _jsonOptions);
+                    return new VehicleUnregisterResponse
+                    {
+                        Success = false,
+                        Reason = errorResult?.Reason ?? "NOT_FOUND",
+                        Message = errorResult?.Message ?? "No wallet records exist with the specified Vehicle Registration Number.",
+                        StatusCode = 404
+                    };
                 }
+
+                if (response.StatusCode == HttpStatusCode.Conflict)
+                {
+                    var conflictResult = JsonSerializer.Deserialize<RhdUnregisterResponse>(content, _jsonOptions);
+                    return new VehicleUnregisterResponse
+                    {
+                        Success = false,
+                        Reason = conflictResult?.HttpStatus ?? "CONFLICT",
+                        Message = conflictResult?.Message ?? "An active wallet already exists for the vehicle registration number.",
+                        StatusCode = 409,
+                        VehicleRegistrationNumber = conflictResult?.Body?.VehicleRegistrationNumber,
+                        CompanyName = conflictResult?.Body?.CompanyName,
+                        Type = conflictResult?.Body?.Type,
+                        Status = conflictResult?.Body?.Status ?? 1
+                    };
+                }
+
+                return new VehicleUnregisterResponse
+                {
+                    Success = false,
+                    Reason = "API_ERROR",
+                    Message = $"API call failed with status {response.StatusCode}: {content}",
+                    StatusCode = (int)response.StatusCode
+                };
             }
             catch (Exception ex)
             {
-                //_logger.LogError(ex, "Error unregistering vehicle");
-                return new ApiResponse<Wallet>
+                _logger.LogError(ex, "Error occurred during UnregisterVehicle for RegNo: {RegNo}", request?.VehicleRegistrationNumber);
+
+                return new VehicleUnregisterResponse
                 {
                     Success = false,
                     Reason = "EXCEPTION",
-                    Message = ex.Message,
+                    Message = ex.InnerException?.Message ?? ex.Message,
                     StatusCode = 500
                 };
             }
