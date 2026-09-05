@@ -7,24 +7,31 @@ using System.Threading.Tasks;
 
 namespace Etc.Shared.DTOs
 {
+    using System.ComponentModel.DataAnnotations;
+
     public class TopUpRequest
     {
         [Required(ErrorMessage = "Wallet No is required.")]
         public string WalletNo { get; set; }
+
         [Required(ErrorMessage = "Transaction amount is required.")]
+        [Range(
+                (double)Constants.TopUpLimits.MinTopUpAmount,
+                (double)Constants.TopUpLimits.MaxTopUpAmount,
+                ErrorMessage = "Transaction amount must be between {1} and {2} BDT.")]
         [RegularExpression(@"^\d+(\.\d{1,2})?$", ErrorMessage = "Transaction amount can have a maximum of 2 decimal places.")]
         public decimal TransactionAmount { get; set; }
 
         [Required(ErrorMessage = "ReferenceId is required.")]
         public string ReferenceId { get; set; }
+
         public string ChannelTransactionDate { get; set; }
+
         public string SourceAccountNo { get; set; }
 
         [Required(ErrorMessage = "SourceChannel is required.")]
         [RegularExpression("^[WOCE]$", ErrorMessage = "Invalid SourceChannel. Allowed values: W (Wallet), O (Online SPG), C (OTC Counter), E (E Sheba).")]
         public string SourceChannel { get; set; } = string.Empty;
-
-
     }
 
     public class TopUpResponse

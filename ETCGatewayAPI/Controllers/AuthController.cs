@@ -26,6 +26,16 @@ namespace ETCGatewayAPI.Controllers
         private readonly DatabaseContext _context;
         private readonly ILogger<AuthController> _logger;
 
+        public AuthController(
+            IConfiguration configuration,
+            DatabaseContext context,
+            ILogger<AuthController> logger)
+        {
+            _configuration = configuration;
+            _context = context;
+            _logger = logger;
+        }
+
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] Etc.Shared.DTOs.LoginRequest request)
         {

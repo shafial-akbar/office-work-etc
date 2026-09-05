@@ -32,7 +32,7 @@ builder.Services.AddDbContext<DatabaseContext>(options =>
 // =========================================================================
 // অ্যাপ্লিকেশন লেভেলের বিজনেস লজিক সার্ভিসসমূহ Scope স্পেসিফিকেশনসহ ইনজেক্ট করা হচ্ছে (Per HTTP Request Lifetime)
 builder.Services.AddHttpContextAccessor();
-//builder.Services.AddScoped<ICustomerInquiryService, CustomerInquiryService>();
+builder.Services.AddScoped<ICustomerInquiryServiceGW, CustomerInquiryServiceGW>();
 builder.Services.AddScoped<IDoTranService, TranService>();
 builder.Services.AddScoped<IWalletTransactionService, WalletTransactionService>();
 

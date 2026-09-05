@@ -13,12 +13,12 @@ using Etc.Shared.Helpers;
 
 namespace ETCGatewayAPI.Services
 {
-    public class CustomerInquiryService : ICustomerInquiryService
+    public class CustomerInquiryServiceGW : ICustomerInquiryServiceGW
     {
         private readonly DatabaseContext _context;
-        private readonly ILogger<CustomerInquiryService> _logger;
+        private readonly ILogger<CustomerInquiryServiceGW> _logger;
 
-        public CustomerInquiryService(DatabaseContext context, ILogger<CustomerInquiryService> logger)
+        public CustomerInquiryServiceGW(DatabaseContext context, ILogger<CustomerInquiryServiceGW> logger)
         {
             _context = context;
             _logger = logger;

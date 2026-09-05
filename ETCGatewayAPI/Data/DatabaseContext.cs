@@ -74,6 +74,7 @@ namespace ETCGatewayAPI.Data
                 entity.HasIndex(e => e.WalletId);
                 entity.HasIndex(e => e.BankTxnId).IsUnique();
                 entity.HasIndex(e => e.PartnerTxnId);
+                entity.HasIndex(e => e.RefNo1).IsUnique();
 
                 entity.HasOne(e => e.Wallet)
                       .WithMany(w => w.DoTransactions)

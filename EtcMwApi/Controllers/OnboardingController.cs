@@ -53,67 +53,6 @@ namespace EtcMwApi.Controllers
             }
         }
 
-        [HttpGet("check-balance")]
-        public async Task<IActionResult> CheckBalance([FromQuery] string searchKey)
-        {
-            var logId = await _requestLogService.LogRequest(Request);
-
-            if (string.IsNullOrWhiteSpace(searchKey))
-            {
-                var badRequestResponse = new
-                {
-                    Success = false,
-                    Message = "Mobile number or Wallet No is required.",
-                    Data = (object)null
-                };
-                await _requestLogService.LogResponse(logId, badRequestResponse);
-                return BadRequest(badRequestResponse);
-            }
-
-            try
-            {
-                var result = await _inquiryService.GetWalletBalanceAsync(searchKey);
-
-                // ১. ডাটা না পাওয়া গেলে (Count == 0)
-                if (result == null || !result.Any())
-                {
-                    var notFoundResponse = new
-                    {
-                        Success = false,
-                        Message = "No active wallet found with the provided search key.",
-                        Data = new List<WalletBalanceResultDto>()
-                    };
-
-                    await _requestLogService.LogResponse(logId, notFoundResponse);
-
-                    // রিকোয়ারমেন্ট অনুযায়ী 404 NotFound অথবা 200 OK যেকোনোটি দিতে পারেন
-                    return NotFound(notFoundResponse);
-                }
-
-                // ২. ডাটা পাওয়া গেলে
-                var successResponse = new
-                {
-                    Success = true,
-                    Message = "Wallet balance fetched successfully.",
-                    Data = result
-                };
-
-                await _requestLogService.LogResponse(logId, successResponse);
-                return Ok(successResponse);
-            }
-            catch (Exception ex)
-            {
-                var errorResponse = new
-                {
-                    Success = false,
-                    Message = ex.Message,
-                    Data = (object)null
-                };
-                await _requestLogService.LogResponse(logId, errorResponse);
-                return StatusCode(500, errorResponse);
-            }
-        }
-
         [HttpPost("enroll-customer")]
         public async Task<IActionResult> EnrollCustomer([FromBody] RegisterFullCustomerDto dto)
         {

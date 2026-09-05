@@ -13,12 +13,12 @@ namespace ETCGatewayAPI.Controllers
     [Authorize]
     public class WalletTransactionController : ControllerBase
     {
-        private readonly ICustomerInquiryService _inquiryService;
-        private readonly WalletTransactionService _walletTransactionService;
+        private readonly ICustomerInquiryServiceGW _inquiryService;
+        private readonly IWalletTransactionService _walletTransactionService;
 
         public WalletTransactionController(
-            ICustomerInquiryService inquiryService,
-            WalletTransactionService walletTransactionService)
+            ICustomerInquiryServiceGW inquiryService,
+            IWalletTransactionService walletTransactionService)
         {
             _inquiryService = inquiryService;
             _walletTransactionService = walletTransactionService;
@@ -45,7 +45,7 @@ namespace ETCGatewayAPI.Controllers
             }
         }
 
-        [HttpGet("check-balance")]
+        [HttpGet("checkBalance")]
         public async Task<IActionResult> CheckBalance([FromQuery] string searchKey)
         {
 
@@ -140,7 +140,7 @@ namespace ETCGatewayAPI.Controllers
         }
 
         // ৪. Toll Authority-র জন্য Reconcile Endpoint (PartnerTxnId)
-        [HttpPost("reconcile-toll")]
+        [HttpPost("reconcileToll")]
         public async Task<IActionResult> ReconcileToll([FromBody] ReconcileTransactionRequest request)
         {
 
@@ -166,7 +166,7 @@ namespace ETCGatewayAPI.Controllers
         }
 
         // ৫. SBL Channels-এর জন্য Reconcile Endpoint (ReferenceId)
-        [HttpPost("reconcile-channel")]
+        [HttpPost("reconcileTopUp")]
         public async Task<IActionResult> ReconcileChannel([FromBody] ReconcileTransactionRequest request)
         {
 

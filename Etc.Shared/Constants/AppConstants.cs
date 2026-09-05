@@ -98,4 +98,11 @@ namespace Etc.Shared.Constants
     {
         public const int DefaultCompanyOid = 6;
     }
+
+    public static class TopUpLimits
+    {
+        public const decimal MinTopUpAmount = 50.00m;
+        public const decimal MaxTopUpAmount = 10000.00m;
+        public const int MaxDailyTopUpCount = 20;
+    }
 }

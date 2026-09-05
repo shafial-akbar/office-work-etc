@@ -36,7 +36,7 @@ namespace ETCGatewayAPI.Services
 
             try
             {
-                // ১. ওয়ালেট ভ্যালিডেশন
+                // 1.1 ওয়ালেট ভ্যালিডেশন
                 var wallet = await _context.Wallets
                     .FirstOrDefaultAsync(w => w.WalletNo == request.WalletNo && w.Status == WalletStatus.Active);
 
@@ -63,6 +63,48 @@ namespace ETCGatewayAPI.Services
                     return notFoundResponse;
                 }
 
+                // 1.2 RefNo1 Uuplicacy Check
+                bool isDuplicateRef = await _context.DoTransactions.AnyAsync(t => t.RefNo1 == request.ReferenceId);
+
+                if (isDuplicateRef)
+                {
+                    _logger.LogWarning("TopUp Failed: Duplicate ReferenceId: {ReferenceId}", request.ReferenceId);
+
+                    var duplicateResponse = new TopUpResponse
+                    {
+                        HttpCode = 400, // অথবা 409 (Conflict)
+                        HttpStatus = "Bad Request",
+                        Message = "The provided ReferenceId already exists."
+                    };
+
+                    await SaveTransactionLogAsync(
+                        topUpRequest: request,
+                        topUpResponse: duplicateResponse,
+                        requestTime: requestTime,
+                        status: "Failed",
+                        requestType: TranLogRequestType.TopUp,
+                        tranMode: TranMode.Credit,
+                        errorMessage: "Duplicate ReferenceId"
+                    );
+
+                    return duplicateResponse;
+                }
+
+                // 1.3 Topup todayCount
+                var todayCount = await _context.DoTransactions.CountAsync(t => t.WalletId == wallet.Id
+                  && t.BankTxnDate.Date == DateTime.UtcNow.Date
+                  && t.TranStatus == TranStatus.Success);
+
+                if (todayCount >= TopUpLimits.MaxDailyTopUpCount)
+                {
+                    return new TopUpResponse
+                    {
+                        HttpCode = 400,
+                        HttpStatus = "Bad Request",
+                        Message = $"Daily top-up limit reached. Maximum allowed count is {TopUpLimits.MaxDailyTopUpCount} per day."
+                    };
+                }
+
                 // অডিটের জন্য ট্রানজেকশনের আগের ব্যালেন্স সংরক্ষণ
                 decimal balanceBefore = wallet.Balance;
 
@@ -70,6 +112,7 @@ namespace ETCGatewayAPI.Services
                 var transaction = new DoTransaction
                 {
                     Id = Guid.NewGuid(),
+                    WalletId = wallet.Id,
                     SourceAccountNo = request.SourceAccountNo,
                     TransactionAmount = request.TransactionAmount,
                     RefNo1 = request.ReferenceId,
