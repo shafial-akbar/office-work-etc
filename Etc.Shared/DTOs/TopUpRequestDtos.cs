@@ -12,7 +12,7 @@ namespace Etc.Shared.DTOs
     public class TopUpRequest
     {
         [Required(ErrorMessage = "Wallet No is required.")]
-        public string WalletNo { get; set; }
+        public string WalletNo { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Transaction amount is required.")]
         [Range(
@@ -23,11 +23,11 @@ namespace Etc.Shared.DTOs
         public decimal TransactionAmount { get; set; }
 
         [Required(ErrorMessage = "ReferenceId is required.")]
-        public string ReferenceId { get; set; }
+        public string ReferenceId { get; set; } = string.Empty;
 
-        public string ChannelTransactionDate { get; set; }
+        public string ChannelTransactionDate { get; set; } = string.Empty;
 
-        public string SourceAccountNo { get; set; }
+        public string SourceAccountNo { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "SourceChannel is required.")]
         [RegularExpression("^[WOCE]$", ErrorMessage = "Invalid SourceChannel. Allowed values: W (Wallet), O (Online SPG), C (OTC Counter), E (E Sheba).")]

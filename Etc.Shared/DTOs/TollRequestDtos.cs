@@ -9,7 +9,7 @@ namespace Etc.Shared.DTOs
 {
     public class DoTransactionRequest
     {
-        [Required(ErrorMessage = "PartnerId (Wallet No) is required.")]
+        [Required(ErrorMessage = "PartnerId is required.")]
         public string PartnerId { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "PartnerTxnId is required.")]
@@ -22,6 +22,7 @@ namespace Etc.Shared.DTOs
         public string SourceAccountNo { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Transaction amount is required.")]
+        [Range(0.01, double.MaxValue, ErrorMessage = "Transaction amount must be greater than 0.")]
         [RegularExpression(@"^\d+(\.\d{1,2})?$", ErrorMessage = "Transaction amount can have a maximum of 2 decimal places.")]
         public decimal TransactionAmount { get; set; }
 
@@ -57,8 +58,8 @@ namespace Etc.Shared.DTOs
         public string PartnerTxnId { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Transaction amount is required.")]
+        [Range(0.01, double.MaxValue, ErrorMessage = "Transaction amount must be greater than 0.")]
         [RegularExpression(@"^\d+(\.\d{1,2})?$", ErrorMessage = "Transaction amount can have a maximum of 2 decimal places.")]
-
         public decimal TransactionAmount { get; set; }
 
     }

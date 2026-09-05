@@ -36,7 +36,7 @@ namespace ETCGatewayAPI.Services
 
             try
             {
-                // 1.1 ওয়ালেট ভ্যালিডেশন
+                // ১.১ ওয়ালেট ভ্যালিডেশন
                 var wallet = await _context.Wallets
                     .FirstOrDefaultAsync(w => w.WalletNo == request.WalletNo && w.Status == WalletStatus.Active);
 
@@ -57,13 +57,16 @@ namespace ETCGatewayAPI.Services
                         requestTime: requestTime,
                         status: "Failed",
                         requestType: TranLogRequestType.TopUp,
-                        tranMode: TranMode.Credit
+                        tranMode: TranMode.Credit,
+                        errorMessage: notFoundResponse.Message
                     );
 
+                    // 👈 Log সংরক্ষণের জন্য ট্রানজেকশন কমিক
+                    await dbTransaction.CommitAsync();
                     return notFoundResponse;
                 }
 
-                // 1.2 RefNo1 Uuplicacy Check
+                // ১.২ RefNo1 Duplicacy Check
                 bool isDuplicateRef = await _context.DoTransactions.AnyAsync(t => t.RefNo1 == request.ReferenceId);
 
                 if (isDuplicateRef)
@@ -72,7 +75,7 @@ namespace ETCGatewayAPI.Services
 
                     var duplicateResponse = new TopUpResponse
                     {
-                        HttpCode = 400, // অথবা 409 (Conflict)
+                        HttpCode = 400,
                         HttpStatus = "Bad Request",
                         Message = "The provided ReferenceId already exists."
                     };
@@ -87,22 +90,40 @@ namespace ETCGatewayAPI.Services
                         errorMessage: "Duplicate ReferenceId"
                     );
 
+                    // 👈 Log সংরক্ষণের জন্য ট্রানজেকশন কমিক
+                    await dbTransaction.CommitAsync();
                     return duplicateResponse;
                 }
 
-                // 1.3 Topup todayCount
+                // ১.৩ Topup todayCount
                 var todayCount = await _context.DoTransactions.CountAsync(t => t.WalletId == wallet.Id
-                  && t.BankTxnDate.Date == DateTime.UtcNow.Date
-                  && t.TranStatus == TranStatus.Success);
+                    && t.BankTxnDate.Date == DateTime.UtcNow.Date
+                    && t.TranStatus == TranStatus.Success);
 
                 if (todayCount >= TopUpLimits.MaxDailyTopUpCount)
                 {
-                    return new TopUpResponse
+                    _logger.LogWarning("TopUp Failed: Daily limit reached for WalletNo: {WalletNo}", request.WalletNo);
+
+                    var limitResponse = new TopUpResponse
                     {
                         HttpCode = 400,
                         HttpStatus = "Bad Request",
                         Message = $"Daily top-up limit reached. Maximum allowed count is {TopUpLimits.MaxDailyTopUpCount} per day."
                     };
+
+                    // 👈 লিমিট অতিক্রমের জন্য লগ সেভ ও কমিক
+                    await SaveTransactionLogAsync(
+                        topUpRequest: request,
+                        topUpResponse: limitResponse,
+                        requestTime: requestTime,
+                        status: "Failed",
+                        requestType: TranLogRequestType.TopUp,
+                        tranMode: TranMode.Credit,
+                        errorMessage: limitResponse.Message
+                    );
+
+                    await dbTransaction.CommitAsync();
+                    return limitResponse;
                 }
 
                 // অডিটের জন্য ট্রানজেকশনের আগের ব্যালেন্স সংরক্ষণ
@@ -119,7 +140,7 @@ namespace ETCGatewayAPI.Services
                     ChannelTransactionDate = DateTimeHelper.ParseToDateTime(request.ChannelTransactionDate),
                     TranMode = TranMode.Credit,
                     SourceChannel = request.SourceChannel,
-                    BankTxnId = $"{DateTime.UtcNow:yyMMddHHmmss}{new Random().Next(100000, 999999)}",
+                    BankTxnId = $"{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(100000, 999999)}",
                     BankTxnDate = DateTime.UtcNow,
                     TranStatus = TranStatus.Success,
                     SettlStatus = SettlementStatus.Pending,
@@ -129,7 +150,7 @@ namespace ETCGatewayAPI.Services
 
                 await _context.DoTransactions.AddAsync(transaction);
 
-                // ৩. ওয়ালেট ব্যালেন্স আপডেট
+                // ৩. ওয়ালেট ব্যালেন্স আপডেট
                 wallet.Balance += request.TransactionAmount;
                 wallet.UpdatedAt = DateTime.UtcNow;
 
@@ -152,7 +173,7 @@ namespace ETCGatewayAPI.Services
                     }
                 };
 
-                // ৫. SaveTransactionLogAsync কল করা (ডাইনামিক requestType ও tranMode সহ)
+                // ৫. SaveTransactionLogAsync কল করা
                 await SaveTransactionLogAsync(
                     topUpRequest: request,
                     topUpResponse: successResponse,
@@ -165,8 +186,7 @@ namespace ETCGatewayAPI.Services
                     balanceAfter: balanceAfter
                 );
 
-                // ৬. ডাটাবেজ সেভ ও ট্রানজেকশন কমিট
-                await _context.SaveChangesAsync();
+                // ৬. ট্রানজেকশন কমিক
                 await dbTransaction.CommitAsync();
 
                 await _context.Entry(transaction).ReloadAsync();
@@ -187,6 +207,7 @@ namespace ETCGatewayAPI.Services
                     Message = "An error occurred while processing the wallet TopUp transaction."
                 };
 
+                // 👈 রোলব্যাক হবার পর আলাদাভাবে ফেল্ড লগ সেভ নিশ্চিত করা
                 await SaveTransactionLogAsync(
                     topUpRequest: request,
                     topUpResponse: errorResponse,
@@ -230,9 +251,13 @@ namespace ETCGatewayAPI.Services
                         requestTime: requestTime,
                         status: "Failed",
                         requestType: TranLogRequestType.TollDeduction,
-                        tranMode: TranMode.Debit
+                        tranMode: TranMode.Debit,
+                        sblTxnId: "",
+                        errorMessage: notFoundResponse.Message
                     );
 
+                    // 👈 Log সেভ রাখতে ট্রানজেকশন কমিক করা হলো
+                    await dbTransaction.CommitAsync();
                     return notFoundResponse;
                 }
 
@@ -259,9 +284,14 @@ namespace ETCGatewayAPI.Services
                         status: "Failed",
                         requestType: TranLogRequestType.TollDeduction,
                         tranMode: TranMode.Debit,
-                        balanceBefore: balanceBefore
+                        sblTxnId: "",
+                        balanceBefore: balanceBefore,
+                        balanceAfter: balanceBefore,
+                        errorMessage: insufficientBalanceResponse.Message
                     );
 
+                    // 👈 Log সেভ রাখতে ট্রানজেকশন কমিক করা হলো
+                    await dbTransaction.CommitAsync();
                     return insufficientBalanceResponse;
                 }
 
@@ -269,6 +299,7 @@ namespace ETCGatewayAPI.Services
                 var transaction = new DoTransaction
                 {
                     Id = Guid.NewGuid(),
+                    WalletId = wallet.Id,
                     PartnerId = request.PartnerId,
                     PartnerTxnId = request.PartnerTxnId,
                     PartnerTransactionDate = DateTimeHelper.ParseToDateTime(request.PartnerTransactionDate),
@@ -280,7 +311,7 @@ namespace ETCGatewayAPI.Services
                     RefNo4 = request.RefNo4,
                     RefNo5 = request.RefNo5,
                     TranMode = TranMode.Debit,
-                    BankTxnId = $"{DateTime.UtcNow:yyMMddHHmmss}{new Random().Next(100000, 999999)}",
+                    BankTxnId = $"{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(100000, 999999)}",
                     BankTxnDate = DateTime.UtcNow,
                     TranStatus = TranStatus.Success,
                     SettlStatus = SettlementStatus.Pending,
@@ -311,7 +342,7 @@ namespace ETCGatewayAPI.Services
                     }
                 };
 
-                // ৫. SaveTransactionLogAsync কল করা (Deduction & Debit সহ)
+                // ৫. SaveTransactionLogAsync কল করা
                 await SaveTransactionLogAsync(
                     request: request,
                     response: successResponse,
@@ -324,8 +355,7 @@ namespace ETCGatewayAPI.Services
                     balanceAfter: balanceAfter
                 );
 
-                // ৬. ডাটাবেজ সেভ ও ট্রানজেকশন কমিট
-                await _context.SaveChangesAsync();
+                // ৬. ট্রানজেকশন কমিক
                 await dbTransaction.CommitAsync();
 
                 await _context.Entry(transaction).ReloadAsync();
@@ -346,6 +376,7 @@ namespace ETCGatewayAPI.Services
                     Message = "An error occurred while deducting toll amount."
                 };
 
+                // 👈 রোলব্যাক হবার পর আলাদাভাবে ফেল্ড অডিট লগ সেভ করা
                 await SaveTransactionLogAsync(
                     request: request,
                     response: errorResponse,
@@ -353,6 +384,7 @@ namespace ETCGatewayAPI.Services
                     status: "Failed",
                     requestType: TranLogRequestType.TollDeduction,
                     tranMode: TranMode.Debit,
+                    sblTxnId: "",
                     errorMessage: ex.Message
                 );
 
@@ -368,16 +400,14 @@ namespace ETCGatewayAPI.Services
 
             try
             {
-                // ১. পূর্বে করা মূল ট্রানজেকশনটি যাচাই (PartnerTxnId, PartnerId, Amount এবং Success স্ট্যাটাস দিয়ে)
+                // ১. পূর্বে করা মূল ট্রানজেকশনটি খুঁজে বের করা (TranStatus ছাড়া)
                 var originalTxn = await _context.DoTransactions
                     .FirstOrDefaultAsync(t => t.PartnerTxnId == request.PartnerTxnId
-                                           && t.PartnerId == request.PartnerId
-                                           && t.TransactionAmount == request.TransactionAmount
-                                           && t.TranStatus == TranStatus.Success);
+                                           && t.PartnerId == request.PartnerId);
 
                 if (originalTxn == null)
                 {
-                    _logger.LogWarning("Reversal Failed: Original successful transaction not found for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
+                    _logger.LogWarning("Reversal Failed: Original transaction not found for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
 
                     var notFoundTxnResponse = new DoTransactionResponse
                     {
@@ -392,13 +422,99 @@ namespace ETCGatewayAPI.Services
                         requestTime: requestTime,
                         status: "Failed",
                         requestType: TranLogRequestType.TollReverse,
-                        tranMode: TranMode.Credit
+                        tranMode: TranMode.Credit,
+                        sblTxnId: "",
+                        errorMessage: notFoundTxnResponse.Message
                     );
 
+                    await dbTransaction.CommitAsync();
                     return notFoundTxnResponse;
                 }
 
-                // ২. ট্রানজেকশনটি ইতোমধ্যে EOD Settlement-এ প্রসেস হয়ে গেছে কিনা তা যাচাই
+                // ২. ট্রানজেকশনটি ইতোমধ্যে রিভার্সড কিনা চেক করা (Correct Placement)
+                if (originalTxn.TranStatus == TranStatus.Reversed)
+                {
+                    _logger.LogWarning("Reversal Failed: Transaction already reversed for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
+
+                    var alreadyReversedResponse = new DoTransactionResponse
+                    {
+                        HttpCode = 409,
+                        HttpStatus = "Conflict",
+                        Message = "Transaction has already been reversed."
+                    };
+
+                    await SaveTransactionLogAsync(
+                        reverseRequest: request,
+                        response: alreadyReversedResponse,
+                        requestTime: requestTime,
+                        status: "Failed",
+                        requestType: TranLogRequestType.TollReverse,
+                        tranMode: TranMode.Credit,
+                        sblTxnId: originalTxn.BankTxnId,
+                        errorMessage: alreadyReversedResponse.Message
+                    );
+
+                    await dbTransaction.CommitAsync();
+                    return alreadyReversedResponse;
+                }
+
+                // ৩. মূল ট্রানজেকশনটি Success স্ট্যাটাসে আছে কিনা তা যাচাই
+                if (originalTxn.TranStatus != TranStatus.Success)
+                {
+                    _logger.LogWarning("Reversal Failed: Transaction is not in Success status. PartnerTxnId: {PartnerTxnId}, Current Status: {Status}",
+                        request.PartnerTxnId, originalTxn.TranStatus);
+
+                    var invalidStatusResponse = new DoTransactionResponse
+                    {
+                        HttpCode = 400,
+                        HttpStatus = "Bad Request",
+                        Message = "Only successful transactions can be reversed."
+                    };
+
+                    await SaveTransactionLogAsync(
+                        reverseRequest: request,
+                        response: invalidStatusResponse,
+                        requestTime: requestTime,
+                        status: "Failed",
+                        requestType: TranLogRequestType.TollReverse,
+                        tranMode: TranMode.Credit,
+                        sblTxnId: originalTxn.BankTxnId,
+                        errorMessage: invalidStatusResponse.Message
+                    );
+
+                    await dbTransaction.CommitAsync();
+                    return invalidStatusResponse;
+                }
+
+                // ৪. ট্রানজেকশনের অ্যামাউন্ট মিলছে কিনা যাচাই
+                if (originalTxn.TransactionAmount != request.TransactionAmount)
+                {
+                    _logger.LogWarning("Reversal Failed: Transaction amount mismatch for PartnerTxnId: {PartnerTxnId}. Expected: {Expected}, Got: {Got}",
+                        request.PartnerTxnId, originalTxn.TransactionAmount, request.TransactionAmount);
+
+                    var amountMismatchResponse = new DoTransactionResponse
+                    {
+                        HttpCode = 400,
+                        HttpStatus = "Bad Request",
+                        Message = "Transaction amount mismatch."
+                    };
+
+                    await SaveTransactionLogAsync(
+                        reverseRequest: request,
+                        response: amountMismatchResponse,
+                        requestTime: requestTime,
+                        status: "Failed",
+                        requestType: TranLogRequestType.TollReverse,
+                        tranMode: TranMode.Credit,
+                        sblTxnId: originalTxn.BankTxnId,
+                        errorMessage: amountMismatchResponse.Message
+                    );
+
+                    await dbTransaction.CommitAsync();
+                    return amountMismatchResponse;
+                }
+
+                // ৫. ট্রানজেকশনটি ইতোমধ্যে EOD Settlement-এ প্রসেস হয়েছে কিনা তা যাচাই
                 if (originalTxn.SettlStatus == SettlementStatus.Settled || originalTxn.SettlStatus == SettlementStatus.Processing)
                 {
                     _logger.LogWarning("Reversal Failed: Transaction already settled for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
@@ -407,7 +523,7 @@ namespace ETCGatewayAPI.Services
                     {
                         HttpCode = 400,
                         HttpStatus = "Bad Request",
-                        Message = "Cannot reverse a transaction that has already been settled."
+                        Message = "Cannot reverse a transaction that has already been settled or is in processing."
                     };
 
                     await SaveTransactionLogAsync(
@@ -417,13 +533,15 @@ namespace ETCGatewayAPI.Services
                         status: "Failed",
                         requestType: TranLogRequestType.TollReverse,
                         tranMode: TranMode.Credit,
-                        sblTxnId: originalTxn.BankTxnId
+                        sblTxnId: originalTxn.BankTxnId,
+                        errorMessage: settledResponse.Message
                     );
 
+                    await dbTransaction.CommitAsync();
                     return settledResponse;
                 }
 
-                // ৩. ওয়ালেট ভ্যালিডেশন
+                // ৬. ওয়ালেট ভ্যালিডেশন
                 var wallet = await _context.Wallets
                     .FirstOrDefaultAsync(w => w.WalletNo == request.PartnerId && w.Status == WalletStatus.Active);
 
@@ -444,48 +562,26 @@ namespace ETCGatewayAPI.Services
                         requestTime: requestTime,
                         status: "Failed",
                         requestType: TranLogRequestType.TollReverse,
-                        tranMode: TranMode.Credit
-                    );
-
-                    return notFoundWalletResponse;
-                }
-
-                // ৪. মূল ট্রানজেকশনটি ইতোমধ্যে রিভার্সড কিনা চেক করা
-                if (originalTxn.TranStatus == TranStatus.Reversed)
-                {
-                    _logger.LogWarning("Reversal Failed: Transaction already reversed for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
-
-                    var alreadyReversedResponse = new DoTransactionResponse
-                    {
-                        HttpCode = 409,
-                        HttpStatus = "Conflict",
-                        Message = "Transaction has already been reversed."
-                    };
-
-                    await SaveTransactionLogAsync(
-                        reverseRequest: request,
-                        response: alreadyReversedResponse,
-                        requestTime: requestTime,
-                        status: "Failed",
-                        requestType: TranLogRequestType.TollReverse,
                         tranMode: TranMode.Credit,
-                        sblTxnId: originalTxn.BankTxnId
+                        sblTxnId: originalTxn.BankTxnId,
+                        errorMessage: notFoundWalletResponse.Message
                     );
 
-                    return alreadyReversedResponse;
+                    await dbTransaction.CommitAsync();
+                    return notFoundWalletResponse;
                 }
 
                 // অডিটের জন্য ওয়ালেটের আগের ব্যালেন্স সংরক্ষণ
                 decimal balanceBefore = wallet.Balance;
 
-                // ৫. মূল ট্রানজেকশনটির স্ট্যাটাস Reversed এ আপডেট করা
+                // ৭. মূল ট্রানজেকশনটির স্ট্যাটাস Reversed এ আপডেট করা
                 originalTxn.TranStatus = TranStatus.Reversed;
                 originalTxn.ResponseMessage = "Transaction Reversed";
 
-                // ৬. নতুন Reversal Transaction আইডি তৈরি (অন্যান্য মেথডের সেম ফরম্যাট)
+                // ৮. নতুন Reversal Transaction আইডি তৈরি
                 string newReversalBankTxnId = $"{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(100000, 999999)}_REV";
 
-                // ৭. DoTransactions টেবিলে নতুন Credit Reversal এন্ট্রি তৈরি করা
+                // ৯. DoTransactions টেবিলে নতুন Credit Reversal এন্ট্রি তৈরি করা
                 var newReversalTxn = new DoTransaction
                 {
                     Id = Guid.NewGuid(),
@@ -497,20 +593,20 @@ namespace ETCGatewayAPI.Services
                     BankTxnId = newReversalBankTxnId,
                     BankTxnDate = requestTime,
                     TranStatus = TranStatus.Success,
-                    SettlStatus = SettlementStatus.Pending, // Pending রাখার অর্থ হলো— "এই রিভার্সাল বা ক্রেডিটের হিসাবটি এখনও EOD Settlement Batch-এ প্রসেস করা বাকি আছে। দিনশেষে সেটেলমেন্ট সামারি তৈরির সময় এই ক্রেডিট অ্যামাউন্টটি টোল কর্তৃপক্ষের প্রাপ্য টাকা থেকে বিয়োগ করতে হবে।
+                    SettlStatus = SettlementStatus.Pending,
                     ResponseCode = "200",
                     ResponseMessage = "Toll Reversal Credit",
                 };
 
                 await _context.DoTransactions.AddAsync(newReversalTxn);
 
-                // ৮. ওয়ালেটে ব্যালেন্স রিফান্ড/ক্রেডিট
+                // ১০. ওয়ালেটে ব্যালেন্স রিফান্ড/ক্রেডিট
                 wallet.Balance += request.TransactionAmount;
                 wallet.UpdatedAt = DateTime.UtcNow;
 
                 decimal balanceAfter = wallet.Balance;
 
-                // ৯. সফল রেসপন্স অবজেক্ট তৈরি
+                // ১১. সফল রেসপন্স অবজেক্ট তৈরি
                 var successResponse = new DoTransactionResponse
                 {
                     HttpCode = 200,
@@ -525,7 +621,7 @@ namespace ETCGatewayAPI.Services
                     }
                 };
 
-                // ১০. Log & Database Save
+                // ১২. Log & Database Save
                 await SaveTransactionLogAsync(
                     reverseRequest: request,
                     response: successResponse,
@@ -538,7 +634,6 @@ namespace ETCGatewayAPI.Services
                     balanceAfter: balanceAfter
                 );
 
-                await _context.SaveChangesAsync();
                 await dbTransaction.CommitAsync();
 
                 _logger.LogInformation("Reversal successful. New Reversal TxnId: {ReversalTxnId}, Original TxnId: {OriginalTxnId}, Updated Balance: {Balance}",
@@ -558,6 +653,7 @@ namespace ETCGatewayAPI.Services
                     Message = "An error occurred while processing the transaction reversal."
                 };
 
+                // 👈 সিস্টেমে ফেল্ড অডিট লগ পারসিস্ট করা
                 await SaveTransactionLogAsync(
                     reverseRequest: request,
                     response: errorResponse,
@@ -565,6 +661,7 @@ namespace ETCGatewayAPI.Services
                     status: "Failed",
                     requestType: TranLogRequestType.TollReverse,
                     tranMode: TranMode.Credit,
+                    sblTxnId: "",
                     errorMessage: ex.Message
                 );
 
@@ -592,20 +689,20 @@ namespace ETCGatewayAPI.Services
                     reconcileResponse: badRequestResponse,
                     requestTime: requestTime,
                     status: "Failed",
-                    requestType: TranLogRequestType.Reconcile
+                    requestType: TranLogRequestType.Reconcile,
+                    errorMessage: badRequestResponse.Message
                 );
 
                 return badRequestResponse;
             }
 
-            // কোন আইডি দিয়ে সার্চ হবে তা নির্ধারণ
+            // কোন আইডি দিয়ে সার্চ হবে তা নির্ধারণ
             bool isTollRequest = !string.IsNullOrWhiteSpace(request.PartnerTxnId);
             string searchTxnId = isTollRequest ? request.PartnerTxnId! : request.ReferenceId!;
 
             try
             {
-                // ২. Primary Check: DoTransactions টেবিলে রেকর্ড খোঁজা
-                // টোল হলে PartnerTxnId, এসবিএল চ্যানেল হলে RefNo1 (বা জেনেরিক আইডি কলাম) চেক করবে
+                // ২. Primary Check: DoTransactions টেবিলে সফল/প্রসেসড রেকর্ড খোঁজা
                 var transaction = await _context.DoTransactions
                     .AsNoTracking()
                     .FirstOrDefaultAsync(t => isTollRequest ? t.PartnerTxnId == searchTxnId : t.RefNo1 == searchTxnId);
@@ -625,7 +722,7 @@ namespace ETCGatewayAPI.Services
                             WalletNo = transaction.PartnerId,
                             PartnerId = transaction.PartnerId,
                             BankTxnId = transaction.BankTxnId,
-                            ReconStatus = transaction.TranStatus.Equals(TranStatus.Success, StringComparison.OrdinalIgnoreCase)
+                            ReconStatus = transaction.TranStatus == TranStatus.Success
                                 ? ReconStatus.Success
                                 : ReconStatus.Failed,
                             TransactionAmount = transaction.TransactionAmount,
@@ -649,9 +746,10 @@ namespace ETCGatewayAPI.Services
                 }
 
                 // ৩. Secondary Check: TransactionLogs টেবিলে টেকনিক্যাল ফেলিউর রেকর্ড চেক
+                // 👈 Reconcile রিকোয়েস্টের নিজেদের লগ বাদ দিয়ে শুধু মূল ট্রানজেকশনের ফেল্ড লগ খোঁজা
                 var failedLog = await _context.TransactionLogs
                     .AsNoTracking()
-                    .Where(l => isTollRequest ? l.PartnerTxnId == searchTxnId : l.PartnerTxnId == searchTxnId)
+                    .Where(l => l.RequestType != TranLogRequestType.Reconcile && l.PartnerTxnId == searchTxnId)
                     .OrderByDescending(l => l.RequestTimestamp)
                     .FirstOrDefaultAsync();
 
@@ -717,7 +815,8 @@ namespace ETCGatewayAPI.Services
                     reconcileResponse: notFoundResponse,
                     requestTime: requestTime,
                     status: "Failed",
-                    requestType: TranLogRequestType.Reconcile
+                    requestType: TranLogRequestType.Reconcile,
+                    errorMessage: notFoundResponse.Message
                 );
 
                 return notFoundResponse;
@@ -733,6 +832,7 @@ namespace ETCGatewayAPI.Services
                     Message = "An error occurred while handling the reconciliation request."
                 };
 
+                // 👈 catch ব্লকেও অডিট লগ সেভ নিশ্চিত করা হলো
                 await SaveTransactionLogAsync(
                     reconcileRequest: request,
                     reconcileResponse: errorResponse,
@@ -838,7 +938,7 @@ namespace ETCGatewayAPI.Services
                     ResponseTimestamp = DateTime.UtcNow,
                     Status = status,
                     SblTxnId = sblTxnId,
-                    AccountNo = accountNo,
+                    AccountNo = accountNo ?? "",
                     TransactionAmount = transactionAmount,
                     BalanceBefore = balanceBefore,
                     BalanceAfter = balanceAfter,
