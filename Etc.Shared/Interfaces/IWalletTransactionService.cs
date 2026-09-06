@@ -13,6 +13,8 @@ namespace Etc.Shared.Interfaces
         // ২. টোল কালেকশন ও ব্যালেন্স কাটা (Toll Amount Debit/Deduction)
         Task<DoTransactionResponse> DeductTollAsync(DoTransactionRequest deductionDto);
 
+        Task<DoTransactionResponse> DeductTollSpAsync(DoTransactionRequest deductionDto);
+
         // ৩. টোল ট্রানজেকশন রিভার্সাল বা রিফান্ড (Toll Amount Reversal/Credit)
         Task<DoTransactionResponse> ReverseTollAsync(ReverseTransactionRequest reversalDto);
 

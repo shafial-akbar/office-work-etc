@@ -64,4 +64,14 @@ namespace Etc.Shared.DTOs
 
     }
 
+    // Stored procedure Dtos
+    public class SpDeductTollResult
+    {
+        public int http_code { get; set; }
+        public string status_message { get; set; } = string.Empty;
+        public string bank_txn_id { get; set; } = string.Empty;
+        public decimal balance_before { get; set; }
+        public decimal balance_after { get; set; }
+    }
+
 }

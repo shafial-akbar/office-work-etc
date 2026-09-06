@@ -43,11 +43,11 @@ namespace Etc.Shared.Models
         public string? RefNo5 { get; set; }
 
         [Required]
-        public DateTime ChannelTransactionDate { get; set; }
+        public DateTime? ChannelTransactionDate { get; set; }
 
         [Required]
         public string BankTxnId { get; set; } = string.Empty;
-        public string OriginalBankTxnId { get; set; } = string.Empty;        
+        public string? OriginalBankTxnId { get; set; } = string.Empty;        
 
         [Required]
         public DateTime BankTxnDate { get; set; } = DateTime.UtcNow;

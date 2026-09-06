@@ -104,7 +104,7 @@ namespace ETCGatewayAPI.Controllers
 
             try
             {
-                var result = await _walletTransactionService.DeductTollAsync(deductionDto);
+                var result = await _walletTransactionService.DeductTollSpAsync(deductionDto);
 
                 return StatusCode(result.HttpCode, result);
             }

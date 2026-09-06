@@ -15,16 +15,20 @@ namespace ETCGatewayAPI.Services
         // ১. প্রতিটি ফিল্ড শুধুমাত্র একবারই থাকবে
         private readonly DatabaseContext _context;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<WalletTransactionService> _logger;
+
 
         // ২. কনস্ট্রাক্টর ইনিশিয়ালাইজেশন
         public WalletTransactionService(
             DatabaseContext context,
-            IHttpContextAccessor httpContextAccessor,
+            IHttpContextAccessor httpContextAccessor, 
+            IServiceProvider serviceProvider,
             ILogger<WalletTransactionService> logger)
         {
             _context = context;
             _httpContextAccessor = httpContextAccessor;
+            _serviceProvider = serviceProvider;
             _logger = logger;
         }
 
@@ -223,6 +227,146 @@ namespace ETCGatewayAPI.Services
         }
 
         // ২. টোল কালেকশন ও ব্যালেন্স কাটা (Toll Amount Debit/Deduction)
+
+        #region "using Stored procedure"
+        public async Task<DoTransactionResponse> DeductTollSpAsync(DoTransactionRequest request)
+        {
+            var requestTime = DateTime.Now;
+            string generatedBankTxnId = $"{DateTime.Now:yyMMddHHmmss}{Random.Shared.Next(100000, 999999)}";
+            DateTime parsedPartnerDate = DateTimeHelper.ParseToDateTime(request.PartnerTransactionDate);
+
+            try
+            {
+                // ১. Stored Procedure এর মাধ্যমে ১টি ডাটাবেজ রাউন্ড-ট্রিপে মূল প্রসেস সম্পন্ন করা
+                var spResult = await _context.Database
+                    .SqlQueryRaw<SpDeductTollResult>(
+                        @"SELECT * FROM fn_DeductToll({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10})",
+                        request.PartnerId ?? "",
+                        request.PartnerTxnId ?? "",
+                        parsedPartnerDate,
+                        request.SourceAccountNo ?? "",
+                        request.TransactionAmount,
+                        request.RefNo1 ?? "",
+                        request.RefNo2 ?? "",
+                        request.RefNo3 ?? "",
+                        request.RefNo4 ?? "",
+                        request.RefNo5 ?? "",
+                        generatedBankTxnId
+                    )
+                    .ToListAsync();
+
+                var result = spResult.FirstOrDefault();
+
+                if (result == null || result.http_code != 200)
+                {
+                    int statusCode = result?.http_code ?? 500;
+                    string statusMsg = result?.status_message ?? "Transaction processing failed.";
+
+                    _logger.LogWarning("Deduction Failed for PartnerTxnId: {PartnerTxnId}. Code: {Code}, Message: {Message}",
+                        request.PartnerTxnId, statusCode, statusMsg);
+
+                    var failedResponse = new DoTransactionResponse
+                    {
+                        HttpCode = statusCode,
+                        HttpStatus = statusCode == 404 ? "Not Found" : "Bad Request",
+                        Message = statusMsg
+                    };
+
+                    // 👈 Non-blocking Audit Logging (Background Task)
+                    _ = Task.Run(async () =>
+                    {
+                        using var scope = _serviceProvider.CreateScope();
+                        var scopedContext = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+                        await SaveTransactionLogAsync(
+                            request: request,
+                            response: failedResponse,
+                            requestTime: requestTime,
+                            status: "Failed",
+                            requestType: TranLogRequestType.TollDeduction,
+                            tranMode: TranMode.Debit,
+                            sblTxnId: "",
+                            balanceBefore: result?.balance_before,
+                            balanceAfter: result?.balance_after,
+                            errorMessage: statusMsg,
+                            dbContext: scopedContext
+                        );
+                    });
+
+                    return failedResponse;
+                }
+
+                // ২. সফল রেসপন্স অবজেক্ট তৈরি
+                var successResponse = new DoTransactionResponse
+                {
+                    HttpCode = 200,
+                    HttpStatus = "OK",
+                    Message = result.status_message,
+                    Body = new TransactionResultBody
+                    {
+                        BankTxnId = result.bank_txn_id,
+                        PartnerTxnId = request.PartnerTxnId,
+                        TranStatus = TranStatus.Success,
+                        TransactionAmount = request.TransactionAmount
+                    }
+                };
+
+                // 👈 Non-blocking Audit Logging (Background-এ চলবে, API রেসপন্স ব্লক করবে না)
+                _ = Task.Run(async () =>
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+                    await SaveTransactionLogAsync(
+                        dbContext: scopedContext,
+                        request: request,
+                        response: successResponse,
+                        requestTime: requestTime,
+                        status: "Success",
+                        requestType: TranLogRequestType.TollDeduction,
+                        tranMode: TranMode.Debit,
+                        sblTxnId: result.bank_txn_id,
+                        balanceBefore: result.balance_before,
+                        balanceAfter: result.balance_after
+                    );
+                });
+
+                _logger.LogInformation("Toll Deduction successful. BankTxnId: {BankTxnId}", result.bank_txn_id);
+
+                // ৩. সরাসরি রেসপন্স রিটার্ন (ReloadAsync সম্পূর্ণ বাদ দেওয়া হয়েছে)
+                return successResponse;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred during DeductToll for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
+
+                var errorResponse = new DoTransactionResponse
+                {
+                    HttpCode = 500,
+                    HttpStatus = "Internal Server Error",
+                    Message = "An error occurred while deducting toll amount."
+                };
+
+                // 👈 Non-blocking Exception Logging
+                _ = Task.Run(async () =>
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+                    await SaveTransactionLogAsync(
+                        dbContext: scopedContext,
+                        request: request,
+                        response: errorResponse,
+                        requestTime: requestTime,
+                        status: "Failed",
+                        requestType: TranLogRequestType.TollDeduction,
+                        tranMode: TranMode.Debit,
+                        sblTxnId: "",
+                        errorMessage: ex.Message
+                    );
+                });
+
+                return errorResponse;
+            }
+        }
+        #endregion
         public async Task<DoTransactionResponse> DeductTollAsync(DoTransactionRequest request)
         {
             using var dbTransaction = await _context.Database.BeginTransactionAsync();
@@ -861,11 +1005,15 @@ namespace ETCGatewayAPI.Services
             TopUpRequest topUpRequest = null,
             TopUpResponse topUpResponse = null,
             ReconcileTransactionRequest reconcileRequest = null,
-            ReconcileTransactionResponse reconcileResponse = null)
+            ReconcileTransactionResponse reconcileResponse = null,
+            DatabaseContext dbContext = null)
         {
             try
             {
-                // ১. রিকোয়েস্ট থেকে ফিল্ড এক্সট্র্যাক্ট করা (Tuple Type Explicitly Casted)
+                // dbContext পাঠানো হলে সেটা ব্যবহার করবে, না পাঠালে মূল _context ব্যবহার করবে
+                var activeContext = dbContext ?? _context;
+
+                // ১. রিকোয়েস্ট থেকে ফিল্ড এক্সট্র্যাক্ট করা (Tuple Type Explicitly Casted)
                 string partnerId = null;
                 string partnerTxnId = null;
                 string accountNo = null;
@@ -934,8 +1082,8 @@ namespace ETCGatewayAPI.Services
                     ResponseData = activeResponse != null ? JsonSerializer.Serialize(activeResponse) : null,
                     ResponseCode = httpCode,
                     ResponseMessage = responseMsg,
-                    RequestTimestamp = requestTime,
-                    ResponseTimestamp = DateTime.UtcNow,
+                    RequestTimestamp = requestTime == default ? DateTime.Now : requestTime,
+                    ResponseTimestamp = DateTime.Now,
                     Status = status,
                     SblTxnId = sblTxnId,
                     AccountNo = accountNo ?? "",
@@ -945,8 +1093,9 @@ namespace ETCGatewayAPI.Services
                     TranMode = tranMode
                 };
 
-                await _context.TransactionLogs.AddAsync(log);
-                await _context.SaveChangesAsync();
+                // ✅ _context এর বদলে activeContext ব্যবহার করা হয়েছে
+                await activeContext.TransactionLogs.AddAsync(log);
+                await activeContext.SaveChangesAsync();
             }
             catch (Exception ex)
             {
