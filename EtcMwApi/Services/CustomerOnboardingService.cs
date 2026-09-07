@@ -29,206 +29,257 @@ namespace EtcMwApi.Services
 
         public async Task<CustomerOnboardingResponseDto> RegisterFullCustomerAsync(RegisterFullCustomerDto dto)
         {
-            await ValidateMobileNumberAvailabilityAsync(dto.MobileNo);
-            await ValidateLocalVehicleExistenceAsync(dto.VehicleRegistrationNumber);
-
-            // 1. Common External Check
-            var rhdVehicleData = await FetchAndValidateRhdVehicleAsync(dto.VehicleRegistrationNumber, dto.CompanyOid);
-
-            using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                var now = DateTime.UtcNow;
+                await ValidateMobileNumberAvailabilityAsync(dto.MobileNo);
+                await ValidateLocalVehicleExistenceAsync(dto.VehicleRegistrationNumber);
 
-                var customer = new Customer
+                // 1. Common External Check
+                var rhdVehicleData = await FetchAndValidateRhdVehicleAsync(dto.VehicleRegistrationNumber, dto.CompanyOid);
+
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
                 {
-                    Id = Guid.NewGuid(),
-                    CustomerId = CustomerIdGenerator.GenerateCustomerId(),
-                    Name = dto.CustomerName,
-                    Email = dto.Email,
-                    DateOfBirth = dto.DateOfBirth.HasValue
-                        ? DateTime.SpecifyKind(dto.DateOfBirth.Value, DateTimeKind.Utc)
-                        : null,
-                    FatherName = dto.FatherName,
-                    MotherName = dto.MotherName,
-                    RegistrationDate = now,
-                    Status = CustomerStatus.Active,
-                    CreatedAt = now,
-                    UpdatedAt = now
-                };
-                await _context.Customers.AddAsync(customer);
+                    var now = DateTime.UtcNow;
 
-                var wallet = await CreateWalletEntityAsync(customer.Id, dto.MobileNo);
+                    var customer = new Customer
+                    {
+                        Id = Guid.NewGuid(),
+                        CustomerId = CustomerIdGenerator.GenerateCustomerId(),
+                        Name = dto.CustomerName,
+                        Email = dto.Email,
+                        DateOfBirth = dto.DateOfBirth.HasValue
+                            ? DateTime.SpecifyKind(dto.DateOfBirth.Value, DateTimeKind.Utc)
+                            : null,
+                        FatherName = dto.FatherName,
+                        MotherName = dto.MotherName,
+                        RegistrationDate = now,
+                        Status = CustomerStatus.Active,
+                        CreatedAt = now,
+                        UpdatedAt = now
+                    };
+                    await _context.Customers.AddAsync(customer);
 
-                // 2. Common Mapping
-                var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
+                    var wallet = await CreateWalletEntityAsync(customer.Id, dto.MobileNo);
 
-                await _context.Vehicles.AddAsync(vehicle);
-                await _context.SaveChangesAsync();
+                    // 2. Common Mapping
+                    var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
 
-                // 3. Common Remote Registration
-                await ConfirmRhdRegistrationAsync(
-                    dto.VehicleRegistrationNumber,
-                    wallet.MobileNo,
-                    wallet.WalletNo,
-                    dto.CompanyOid,
-                    "Full Customer  Onboarding with Vehicle");
+                    await _context.Vehicles.AddAsync(vehicle);
+                    await _context.SaveChangesAsync();
 
-                await transaction.CommitAsync();
-                _logger.LogInformation("Full customer onboarding completed successfully. CustomerId: {CustomerId}", customer.CustomerId);
+                    // 3. Common Remote Registration
+                    await ConfirmRhdRegistrationAsync(
+                        dto.VehicleRegistrationNumber,
+                        wallet.MobileNo,
+                        wallet.WalletNo,
+                        dto.CompanyOid,
+                        "Full Customer Onboarding with Vehicle");
 
-                // 4. Response DTO Return
-                return new CustomerOnboardingResponseDto
+                    await transaction.CommitAsync();
+                    _logger.LogInformation("Full customer onboarding completed successfully. CustomerId: {CustomerId}", customer.CustomerId);
+
+                    // 4. Response DTO Return (200 OK)
+                    return new CustomerOnboardingResponseDto
+                    {
+                        HttpCode = 200,
+                        HttpStatus = "OK",
+                        CustomerId = customer.CustomerId,
+                        Name = customer.Name,
+                        MobileNo = wallet.MobileNo,
+                        WalletNo = wallet.WalletNo,
+                        VehicleRegistrationNumber = dto.VehicleRegistrationNumber,
+                        Message = $"Customer : {customer.CustomerId} onboarding completed successfully with wallet : {wallet.WalletNo} and vehicle : {dto.VehicleRegistrationNumber}"
+                    };
+                }
+                catch (Exception)
                 {
-                    CustomerId = customer.CustomerId,
-                    Name = customer.Name,
-                    MobileNo = wallet.MobileNo,
-                    WalletNo = wallet.WalletNo,
-                    VehicleRegistrationNumber = dto.VehicleRegistrationNumber,
-                    Message = $"customer : {customer.CustomerId} onboarding completed successfully with wallet : {wallet.WalletNo} and vehicle : {dto.VehicleRegistrationNumber}"
-                };
+                    await transaction.RollbackAsync();
+                    throw;
+                }
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
                 _logger.LogError(ex, "Failed to register full customer.");
-                throw;
+
+                return new CustomerOnboardingResponseDto
+                {
+                    HttpCode = ex is KeyNotFoundException ? 404 : (ex is ArgumentException || ex is InvalidOperationException ? 400 : 500),
+                    HttpStatus = ex is KeyNotFoundException ? "Not Found" : (ex is ArgumentException || ex is InvalidOperationException ? "Bad Request" : "Internal Server Error"),
+                    Message = ex.Message
+                };
             }
         }
 
         public async Task<VehicleOnboardingResponseDto> CreateNewWalletAsync(CreateNewWalletDto dto)
         {
-            var customer = await _context.Customers.FindAsync(dto.CustomerGuid)
-                ?? throw new KeyNotFoundException($"Customer not found with ID: {dto.CustomerGuid}");
-
-            await ValidateMobileNumberAvailabilityAsync(dto.NewMobileNo);
-            await ValidateLocalVehicleExistenceAsync(dto.VehicleRegistrationNumber);
-
-            // 1. Common External Check
-            var rhdVehicleData = await FetchAndValidateRhdVehicleAsync(dto.VehicleRegistrationNumber, dto.CompanyOid);
-
-            using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                var wallet = await CreateWalletEntityAsync(customer.Id, dto.NewMobileNo);
+                var customer = await _context.Customers.FindAsync(dto.CustomerGuid)
+                    ?? throw new KeyNotFoundException($"Customer not found with ID: {dto.CustomerGuid}");
 
-                // 2. Common Mapping
-                var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
+                await ValidateMobileNumberAvailabilityAsync(dto.NewMobileNo);
+                await ValidateLocalVehicleExistenceAsync(dto.VehicleRegistrationNumber);
 
-                await _context.Vehicles.AddAsync(vehicle);
-                await _context.SaveChangesAsync();
+                // 1. Common External Check
+                var rhdVehicleData = await FetchAndValidateRhdVehicleAsync(dto.VehicleRegistrationNumber, dto.CompanyOid);
 
-                // 3. Common Remote Registration
-                await ConfirmRhdRegistrationAsync(
-                    dto.VehicleRegistrationNumber,
-                    wallet.MobileNo,
-                    wallet.WalletNo,
-                    dto.CompanyOid,
-                    "New Wallet Creation & Vehicle Registration");
-
-                await transaction.CommitAsync();
-                _logger.LogInformation("New Wallet {WalletNo} and Vehicle registered for CustomerId: {CustomerId}", wallet.WalletNo, customer.CustomerId);
-                // 5. Response DTO Return
-                return new VehicleOnboardingResponseDto
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
                 {
-                    VehicleGuid = vehicle.Id,
-                    VehicleRegistrationNumber = vehicle.VehicleRegistrationNumber,
-                    WalletGuid = wallet.Id,
-                    WalletNo = wallet.WalletNo,
-                    MobileNo = wallet.MobileNo,
-                    BrtaClass = vehicle.BrtaClass,
-                    RhdClass = vehicle.RhdClass,
-                    ChassisNo = vehicle.ChassisNo,
-                    AddedAt = DateTime.UtcNow,
-                    Message = $"Vehicle : {vehicle.VehicleRegistrationNumber} successfully registered and added to wallet : {wallet.WalletNo}"
-                };
+                    var wallet = await CreateWalletEntityAsync(customer.Id, dto.NewMobileNo);
+
+                    // 2. Common Mapping
+                    var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
+
+                    await _context.Vehicles.AddAsync(vehicle);
+                    await _context.SaveChangesAsync();
+
+                    // 3. Common Remote Registration
+                    await ConfirmRhdRegistrationAsync(
+                        dto.VehicleRegistrationNumber,
+                        wallet.MobileNo,
+                        wallet.WalletNo,
+                        dto.CompanyOid,
+                        "New Wallet Creation & Vehicle Registration");
+
+                    await transaction.CommitAsync();
+                    _logger.LogInformation("New Wallet {WalletNo} and Vehicle registered for CustomerId: {CustomerId}", wallet.WalletNo, customer.CustomerId);
+
+                    // 4. Response DTO Return (200 OK)
+                    return new VehicleOnboardingResponseDto
+                    {
+                        HttpCode = 200,
+                        HttpStatus = "OK",
+                        VehicleGuid = vehicle.Id,
+                        VehicleRegistrationNumber = vehicle.VehicleRegistrationNumber,
+                        WalletGuid = wallet.Id,
+                        WalletNo = wallet.WalletNo,
+                        MobileNo = wallet.MobileNo,
+                        BrtaClass = vehicle.BrtaClass,
+                        RhdClass = vehicle.RhdClass,
+                        ChassisNo = vehicle.ChassisNo,
+                        AddedAt = DateTime.UtcNow,
+                        Message = $"Vehicle : {vehicle.VehicleRegistrationNumber} successfully registered and added to wallet : {wallet.WalletNo}"
+                    };
+                }
+                catch (Exception)
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
                 _logger.LogError(ex, "Failed to create new wallet for customer: {CustomerId}", dto.CustomerGuid);
-                throw;
+
+                return new VehicleOnboardingResponseDto
+                {
+                    HttpCode = ex is KeyNotFoundException ? 404 : (ex is ArgumentException || ex is InvalidOperationException ? 400 : 500),
+                    HttpStatus = ex is KeyNotFoundException ? "Not Found" : (ex is ArgumentException || ex is InvalidOperationException ? "Bad Request" : "Internal Server Error"),
+                    Message = ex.Message
+                };
             }
         }
 
         public async Task<VehicleOnboardingResponseDto> AddVehicleToWalletAsync(AddVehicleToWalletDto dto)
         {
-            // ১. লোকাল ডাটাবেজ প্রাক-যাচাই (dto.WalletId ব্যবহার করা হয়েছে)
-            var wallet = await _context.Wallets.FindAsync(dto.WalletGuid)
-                ?? throw new KeyNotFoundException($"Wallet not found with ID: {dto.WalletGuid}");
-
-            await ValidateLocalVehicleExistenceAsync(dto.VehicleRegistrationNumber);
-
-            // ২. এক্সটার্নাল RHD ইনকোয়ারি
-            var rhdVehicleData = await FetchAndValidateRhdVehicleAsync(dto.VehicleRegistrationNumber, dto.CompanyOid);
-
-            // ৩. RHD API-তে রেজিস্ট্রেশন সম্পন্ন করা
-            await ConfirmRhdRegistrationAsync(
-                dto.VehicleRegistrationNumber,
-                wallet.MobileNo,
-                wallet.WalletNo,
-                dto.CompanyOid,
-                "Vehicle linked to existing wallet via Onboarding");
-
-            // ৪. লোকাল ডাটাবেজে সেভ করা এবং Compensation Logic
             try
             {
-                var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
+                // ১. লোকাল ডাটাবেজ প্রাক-যাচাই
+                var wallet = await _context.Wallets.FindAsync(dto.WalletGuid)
+                    ?? throw new KeyNotFoundException($"Wallet not found with ID: {dto.WalletGuid}");
 
-                await _context.Vehicles.AddAsync(vehicle);
-                await _context.SaveChangesAsync();
+                await ValidateLocalVehicleExistenceAsync(dto.VehicleRegistrationNumber);
 
-                _logger.LogInformation("New vehicle {RegNo} successfully added to Wallet {WalletNo}",
-                    vehicle.VehicleRegistrationNumber, wallet.WalletNo);
+                // ২. এক্সটার্নাল RHD ইনকোয়ারি
+                var rhdVehicleData = await FetchAndValidateRhdVehicleAsync(dto.VehicleRegistrationNumber, dto.CompanyOid);
 
-                // 5. Response DTO Return
-                return new VehicleOnboardingResponseDto
+                // ৩. RHD API-তে রেজিস্ট্রেশন সম্পন্ন করা
+                await ConfirmRhdRegistrationAsync(
+                    dto.VehicleRegistrationNumber,
+                    wallet.MobileNo,
+                    wallet.WalletNo,
+                    dto.CompanyOid,
+                    "Vehicle linked to existing wallet via Onboarding");
+
+                // ৪. লোকাল ডাটাবেজে সেভ করা এবং Compensation Logic
+                try
                 {
-                    VehicleGuid = vehicle.Id,
-                    VehicleRegistrationNumber = vehicle.VehicleRegistrationNumber,
-                    WalletGuid = wallet.Id,
-                    WalletNo = wallet.WalletNo,
-                    MobileNo = wallet.MobileNo,
-                    BrtaClass = vehicle.BrtaClass,
-                    RhdClass = vehicle.RhdClass,
-                    ChassisNo = vehicle.ChassisNo,
-                    AddedAt = DateTime.UtcNow,
-                    Message = $"Vehicle : {vehicle.VehicleRegistrationNumber} successfully registered and added to wallet : {wallet.WalletNo}"
-                };
+                    var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
+
+                    await _context.Vehicles.AddAsync(vehicle);
+                    await _context.SaveChangesAsync();
+
+                    _logger.LogInformation("New vehicle {RegNo} successfully added to Wallet {WalletNo}",
+                        vehicle.VehicleRegistrationNumber, wallet.WalletNo);
+
+                    // 5. Response DTO Return (200 OK)
+                    return new VehicleOnboardingResponseDto
+                    {
+                        HttpCode = 200,
+                        HttpStatus = "OK",
+                        VehicleGuid = vehicle.Id,
+                        VehicleRegistrationNumber = vehicle.VehicleRegistrationNumber,
+                        WalletGuid = wallet.Id,
+                        WalletNo = wallet.WalletNo,
+                        MobileNo = wallet.MobileNo,
+                        BrtaClass = vehicle.BrtaClass,
+                        RhdClass = vehicle.RhdClass,
+                        ChassisNo = vehicle.ChassisNo,
+                        AddedAt = DateTime.UtcNow,
+                        Message = $"Vehicle : {vehicle.VehicleRegistrationNumber} successfully registered and added to wallet : {wallet.WalletNo}"
+                    };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Local DB save failed for vehicle {RegNo} after successful RHD Registration. Initiating RHD Compensation...",
+                        dto.VehicleRegistrationNumber);
+
+                    // 6. Compensating Transaction: লোকাল DB ফেল করলে RHD-র রেজিস্ট্রেশন রিভার্ট করা
+                    try
+                    {
+                        var unregisterRequest = new VehicleUnregisterRequest
+                        {
+                            VehicleRegistrationNumber = dto.VehicleRegistrationNumber,
+                            CompanyOid = dto.CompanyOid,
+                            WalletNumber = wallet.WalletNo,
+                            Status = 0 // Inactive
+                        };
+
+                        var unregisterResult = await _rhdApiService.UnregisterVehicle(unregisterRequest);
+                        if (!unregisterResult.Success)
+                        {
+                            _logger.LogCritical("CRITICAL: Failed to compensate/unregister vehicle {RegNo} on RHD! Manual intervention required. Error: {Message}",
+                                dto.VehicleRegistrationNumber, unregisterResult.Message);
+                        }
+                    }
+                    catch (Exception rollbackEx)
+                    {
+                        _logger.LogCritical(rollbackEx, "CRITICAL: Exception occurred while trying to compensate/unregister vehicle {RegNo} from RHD.",
+                            dto.VehicleRegistrationNumber);
+                    }
+
+                    return new VehicleOnboardingResponseDto
+                    {
+                        HttpCode = 500,
+                        HttpStatus = "Internal Server Error",
+                        Message = "Failed to save vehicle details in local database. The RHD registration has been reverted."
+                    };
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Local DB save failed for vehicle {RegNo} after successful RHD Registration. Initiating RHD Compensation...",
-                    dto.VehicleRegistrationNumber);
+                _logger.LogError(ex, "Failed to add vehicle to wallet for WalletGuid: {WalletGuid}", dto.WalletGuid);
 
-                // 6. Compensating Transaction: লোকাল DB ফেল করলে RHD-র রেজিস্ট্রেশন রিভার্ট করা
-                try
+                return new VehicleOnboardingResponseDto
                 {
-                    var unregisterRequest = new VehicleUnregisterRequest
-                    {
-                        VehicleRegistrationNumber = dto.VehicleRegistrationNumber,
-                        CompanyOid = dto.CompanyOid,
-                        WalletNumber = wallet.WalletNo,
-                        Status = 0 // Inactive
-                    };
-
-                    var unregisterResult = await _rhdApiService.UnregisterVehicle(unregisterRequest);
-                    if (!unregisterResult.Success)
-                    {
-                        _logger.LogCritical("CRITICAL: Failed to compensate/unregister vehicle {RegNo} on RHD! Manual intervention required. Error: {Message}",
-                            dto.VehicleRegistrationNumber, unregisterResult.Message);
-                    }
-                }
-                catch (Exception rollbackEx)
-                {
-                    _logger.LogCritical(rollbackEx, "CRITICAL: Exception occurred while trying to compensate/unregister vehicle {RegNo} from RHD.",
-                        dto.VehicleRegistrationNumber);
-                }
-
-                throw new InvalidOperationException("Failed to save vehicle details in local database. The RHD registration has been reverted.", ex);
+                    HttpCode = ex is KeyNotFoundException ? 404 : (ex is ArgumentException || ex is InvalidOperationException ? 400 : 500),
+                    HttpStatus = ex is KeyNotFoundException ? "Not Found" : (ex is ArgumentException || ex is InvalidOperationException ? "Bad Request" : "Internal Server Error"),
+                    Message = ex.Message
+                };
             }
         }
-
 
         public async Task<VehicleUnregisterResponse> UnregisterVehicleAsync(VehicleUnregisterDto dto)
         {
@@ -247,6 +298,9 @@ namespace EtcMwApi.Services
             {
                 _logger.LogWarning("RHD Vehicle Unregistration failed for Vehicle: {RegNo}, Message: {Message}",
                     dto.VehicleRegistrationNumber, result.Message);
+
+                result.HttpCode = result.StatusCode > 0 ? result.StatusCode : 400;
+                result.HttpStatus = "Bad Request";
                 return result;
             }
 
@@ -262,10 +316,12 @@ namespace EtcMwApi.Services
                 {
                     return new VehicleUnregisterResponse
                     {
+                        HttpCode = 404,
+                        HttpStatus = "Not Found",
+                        StatusCode = 404,
                         Success = false,
                         Reason = "NOT_FOUND",
-                        Message = "Wallet record not found in local database.",
-                        StatusCode = 404
+                        Message = "Wallet record not found in local database."
                     };
                 }
 
@@ -291,6 +347,11 @@ namespace EtcMwApi.Services
                 _logger.LogInformation("Successfully unregistered vehicle {RegNo} and set status to Inactive in local DB.",
                     dto.VehicleRegistrationNumber);
 
+                result.HttpCode = 200;
+                result.HttpStatus = "OK";
+                result.StatusCode = 200;
+                result.Success = true;
+                result.Message = "Vehicle unregistered successfully.";
                 return result;
             }
             catch (Exception ex)
@@ -301,10 +362,12 @@ namespace EtcMwApi.Services
 
                 return new VehicleUnregisterResponse
                 {
+                    HttpCode = 500,
+                    HttpStatus = "Internal Server Error",
+                    StatusCode = 500,
                     Success = false,
                     Reason = "EXCEPTION",
-                    Message = "Failed to update local database after unregistration.",
-                    StatusCode = 500
+                    Message = "Failed to update local database after unregistration."
                 };
             }
         }

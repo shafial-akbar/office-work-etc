@@ -232,15 +232,16 @@ namespace ETCGatewayAPI.Services
         public async Task<DoTransactionResponse> DeductTollSpAsync(DoTransactionRequest request)
         {
             var requestTime = DateTime.Now;
-            string generatedBankTxnId = $"{DateTime.Now:yyMMddHHmmss}{Random.Shared.Next(100000, 999999)}";
+            var bankTxnDate = DateTime.Now; // Log ও DoTransactions টেবিলের সময় সিঙ্ক রাখার জন্য
+            string generatedBankTxnId = $"{bankTxnDate:yyMMddHHmmss}{Random.Shared.Next(100000, 999999)}";
             DateTime parsedPartnerDate = DateTimeHelper.ParseToDateTime(request.PartnerTransactionDate);
 
             try
             {
-                // ১. Stored Procedure এর মাধ্যমে ১টি ডাটাবেজ রাউন্ড-ট্রিপে মূল প্রসেস সম্পন্ন করা
+                // ১. Stored Procedure
                 var spResult = await _context.Database
                     .SqlQueryRaw<SpDeductTollResult>(
-                        @"SELECT * FROM fn_DeductToll({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10})",
+                        @"SELECT * FROM fn_DeductToll({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11})",
                         request.PartnerId ?? "",
                         request.PartnerTxnId ?? "",
                         parsedPartnerDate,
@@ -251,7 +252,8 @@ namespace ETCGatewayAPI.Services
                         request.RefNo3 ?? "",
                         request.RefNo4 ?? "",
                         request.RefNo5 ?? "",
-                        generatedBankTxnId
+                        generatedBankTxnId,
+                        bankTxnDate
                     )
                     .ToListAsync();
 
@@ -272,7 +274,7 @@ namespace ETCGatewayAPI.Services
                         Message = statusMsg
                     };
 
-                    // 👈 Non-blocking Audit Logging (Background Task)
+                    // Non-blocking Audit Logging
                     _ = Task.Run(async () =>
                     {
                         using var scope = _serviceProvider.CreateScope();
@@ -310,7 +312,7 @@ namespace ETCGatewayAPI.Services
                     }
                 };
 
-                // 👈 Non-blocking Audit Logging (Background-এ চলবে, API রেসপন্স ব্লক করবে না)
+                // Non-blocking Audit Logging
                 _ = Task.Run(async () =>
                 {
                     using var scope = _serviceProvider.CreateScope();
@@ -331,7 +333,6 @@ namespace ETCGatewayAPI.Services
 
                 _logger.LogInformation("Toll Deduction successful. BankTxnId: {BankTxnId}", result.bank_txn_id);
 
-                // ৩. সরাসরি রেসপন্স রিটার্ন (ReloadAsync সম্পূর্ণ বাদ দেওয়া হয়েছে)
                 return successResponse;
             }
             catch (Exception ex)
@@ -345,7 +346,7 @@ namespace ETCGatewayAPI.Services
                     Message = "An error occurred while deducting toll amount."
                 };
 
-                // 👈 Non-blocking Exception Logging
+                // Non-blocking Exception Logging
                 _ = Task.Run(async () =>
                 {
                     using var scope = _serviceProvider.CreateScope();
