@@ -16,15 +16,18 @@ namespace EtcMwApi.Controllers
         private readonly ICustomerOnboardingService _onboardingService;
         private readonly ICustomerInquiryService _inquiryService;
         private readonly IRequestLogService _requestLogService;
+        private readonly ILogger<OnboardingController> _logger;
 
         public OnboardingController(
             ICustomerOnboardingService onboardingService,
             ICustomerInquiryService inquiryService,
-            IRequestLogService requestLogService)
+            IRequestLogService requestLogService,
+            ILogger<OnboardingController> logger)
         {
             _onboardingService = onboardingService;
             _inquiryService = inquiryService;
             _requestLogService = requestLogService;
+            _logger = logger;
         }
 
         [HttpGet("check-account")]
@@ -53,6 +56,45 @@ namespace EtcMwApi.Controllers
             }
         }
 
+        //[HttpPost("enroll-customer")]
+        //public async Task<IActionResult> EnrollCustomer([FromBody] RegisterFullCustomerDto dto)
+        //{
+        //    if (!ModelState.IsValid)
+        //    {
+        //        return BadRequest(ModelState);
+        //    }
+
+        //    var logId = await _requestLogService.LogRequest(Request);
+
+        //    try
+        //    {
+        //        var customer = await _onboardingService.RegisterFullCustomerAsync(dto);
+        //        var response = new { Success = true, Message = customer.Message, Data = customer };
+
+        //        await _requestLogService.LogResponse(logId, response);
+        //        return Ok(response);
+        //    }
+        //    catch (KeyNotFoundException ex)
+        //    {
+        //        var errorResponse = new { Success = false, Message = ex.Message };
+        //        await _requestLogService.LogResponse(logId, errorResponse);
+        //        return NotFound(errorResponse);
+        //    }
+        //    catch (InvalidOperationException ex)
+        //    {
+        //        var errorResponse = new { Success = false, Message = ex.Message };
+        //        await _requestLogService.LogResponse(logId, errorResponse);
+        //        return Conflict(errorResponse);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        var errorResponse = new { Success = false, Message = "An unexpected error occurred." };
+        //        await _requestLogService.LogResponse(logId, new { Success = false, Exception = ex.Message });
+        //        return StatusCode(500, errorResponse);
+        //    }
+
+        //}
+
         [HttpPost("enroll-customer")]
         public async Task<IActionResult> EnrollCustomer([FromBody] RegisterFullCustomerDto dto)
         {
@@ -65,31 +107,29 @@ namespace EtcMwApi.Controllers
 
             try
             {
-                var customer = await _onboardingService.RegisterFullCustomerAsync(dto);
-                var response = new { Success = true, Message = customer.Message, Data = customer };
+                var result = await _onboardingService.RegisterFullCustomerAsync(dto);
 
-                await _requestLogService.LogResponse(logId, response);
-                return Ok(response);
-            }
-            catch (KeyNotFoundException ex)
-            {
-                var errorResponse = new { Success = false, Message = ex.Message };
-                await _requestLogService.LogResponse(logId, errorResponse);
-                return NotFound(errorResponse);
-            }
-            catch (InvalidOperationException ex)
-            {
-                var errorResponse = new { Success = false, Message = ex.Message };
-                await _requestLogService.LogResponse(logId, errorResponse);
-                return Conflict(errorResponse);
+                // সরাসরি result (DTO) অবজেক্ট রেসপন্স হিসেবে লগ করা হচ্ছে
+                await _requestLogService.LogResponse(logId, result);
+
+                // DTO-এর ভেতরে থাকা HttpCode অনুযায়ী ডায়নামিক HTTP Status Code সহ অবজেক্ট রিটার্ন
+                return StatusCode(result.HttpCode, result);
             }
             catch (Exception ex)
             {
-                var errorResponse = new { Success = false, Message = "An unexpected error occurred." };
-                await _requestLogService.LogResponse(logId, new { Success = false, Exception = ex.Message });
+                _logger.LogError(ex, "Unexpected error occurred during customer enrollment.");
+
+                var errorResponse = new CustomerOnboardingResponseDto
+                {
+                    HttpCode = 500,
+                    HttpStatus = "Internal Server Error",
+                    Message = "An unexpected error occurred."
+                };
+
+                await _requestLogService.LogResponse(logId, errorResponse);
+
                 return StatusCode(500, errorResponse);
             }
-
         }
 
         [HttpPost("add-vehicle")]
