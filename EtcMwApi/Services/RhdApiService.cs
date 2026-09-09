@@ -60,16 +60,17 @@ namespace EtcMwApi.Services
                     PropertyNameCaseInsensitive = true // Handle case insensitivity
                 };
 
+                var result = JsonSerializer.Deserialize<VehicleResponse>(content, options);
+
                 if (response.IsSuccessStatusCode)
                 {
-                    var result = JsonSerializer.Deserialize<VehicleResponse>(content, options);
                     return new ApiResponse<Vehicle> { Success = result.Success, Reason = result.Reason, Message = result.Message, Data = result.Data, StatusCode = (int)result.Code };
                 }
                 
                 return new ApiResponse<Vehicle>
                 {
                     Success = false,
-                    Message = $"API call failed: {content}",
+                    Message = $"{result.Message}",
                     Reason="Failed",
                     StatusCode = (int)response.StatusCode
                 };
