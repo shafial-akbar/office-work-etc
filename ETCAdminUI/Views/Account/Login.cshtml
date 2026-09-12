@@ -1,0 +1,53 @@
+﻿@model ETCAdminUI.Models.LoginModel
+
+@{
+    /**/
+
+    ViewBag.Title = "ETC Admin Login";
+    Layout = "~/Views/Shared/_LayoutLogin.cshtml";
+}
+
+<div class="bg-light form-signin" style="width:350px;">
+
+    <h5 class="text-center" style="color:#2e5495;">
+        @ViewBag.Title
+    </h5>
+    <hr />
+    <div class="card-body" style="padding-left:25px;">
+        @using (Html.BeginForm("Login", "Account", FormMethod.Post))
+        {
+            @Html.AntiForgeryToken()
+
+            <div>
+                @Html.ValidationSummary(true, "", new { @class = "text-danger" })
+
+                @if (ViewBag.LoginStat != null && !ViewBag.LoginStat)
+                {                    
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <strong>Login Failed!@ViewBag.Message</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                }
+
+                <div>
+                    @Html.LabelFor(m => m.UserId, htmlAttributes: new { @class = "col-form-label" })
+                    @Html.EditorFor(m => m.UserId, new { htmlAttributes = new { @class = "form-control", @autocomplete = "off" } })
+                    @Html.ValidationMessageFor(m => m.UserId, "", new { @class = "text-danger" })
+                </div>
+
+                <div>
+                    @Html.LabelFor(m => m.Password, htmlAttributes: new { @class = "col-form-label" })
+                    @Html.EditorFor(m => m.Password, new { htmlAttributes = new { @class = "form-control", @autocomplete = "new-password" } })
+                    @Html.ValidationMessageFor(m => m.Password, "", new { @class = "text-danger" })
+                </div>
+
+                <div class="my-3">
+                    <input type="submit" value="Login" class="btn btn-primary w-100" />
+                </div>
+            </div>
+        }
+    </div>
+
+
+    <p class="login-footer">&copy; @DateTime.Now.Year - Sonali Bank PLC.</p>
+</div>

@@ -1,0 +1,57 @@
+html {
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+}
+
+html {
+  position: relative;
+  min-height: 100%;
+}
+
+body {
+  margin-bottom: 60px;
+}
+/*Login*/
+.bg_gardient_effect {
+    height: 100vh;
+    background: linear-gradient(rgba(222, 222, 222, 0.45), rgba(59,120,203, 0.6), rgba(18, 52, 98, 0.8));
+    /* background: #ccc;*/
+}
+
+.container-login {
+    /*margin-top:100px;*/
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    -ms-transform: translate(-50%, -40%);
+    transform: translate(-50%, -40%);
+}
+
+.form-signin {
+    max-width: 350px;
+    padding: 15px;
+    margin: 0 auto;
+}
+
+.login-footer {
+    text-align: center;
+    border-top: 1px solid #ddd;
+    padding-top: 5px;
+}
+.login-div {
+    width: 500px;
+    margin: 50px auto;
+}
+/*End Login*/
+.bg-menu {
+    background: url(../images/pattern/balance_bg.png) repeat-x;
+}
