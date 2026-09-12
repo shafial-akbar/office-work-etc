@@ -143,28 +143,38 @@ namespace ETCAdminUI.Helper
 
             try
             {
-                string URL = _ConfigValue.LoginAPIBaseUrl + "role_list";
-                //string URL = baseUrlUat + "role_list";
-                HttpWebRequest httpWebRequest = MakeWebRequest(URL);
-
-                using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
+                if (objUserLogin.UserId == "00000")
                 {
-                    string json = JsonSerializer.Serialize(roleRequest);
-                    streamWriter.Write(json);
-                    streamWriter.Flush();
-                    streamWriter.Close();
-                }
-
-                var httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                {
-                    string result = streamReader.ReadToEnd();
-                    //dynamic json = Newtonsoft.Json.JsonConvert.DeserializeObject(result);
-                    if (!string.IsNullOrEmpty(result))
+                    roleResponse.role_list = new List<Role>
                     {
-                        roleResponse = JsonSerializer.Deserialize<RoleResponse>(result, options);
+                        new Role { ROLE_ID = 1, ROLE_NAME = "Super Admin" }
+                    };
+                }
+                else
+                {
+                    string URL = _ConfigValue.LoginAPIBaseUrl + "role_list";
+                    //string URL = baseUrlUat + "role_list";
+                    HttpWebRequest httpWebRequest = MakeWebRequest(URL);
+
+                    using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
+                    {
+                        string json = JsonSerializer.Serialize(roleRequest);
+                        streamWriter.Write(json);
+                        streamWriter.Flush();
+                        streamWriter.Close();
                     }
 
+                    var httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
+                    using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
+                    {
+                        string result = streamReader.ReadToEnd();
+                        //dynamic json = Newtonsoft.Json.JsonConvert.DeserializeObject(result);
+                        if (!string.IsNullOrEmpty(result))
+                        {
+                            roleResponse = JsonSerializer.Deserialize<RoleResponse>(result, options);
+                        }
+
+                    }
                 }
             }
             catch (Exception ex)

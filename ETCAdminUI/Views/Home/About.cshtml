@@ -1,0 +1,96 @@
+﻿@{
+    ViewData["Title"] = "About System";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<!-- ফন্ট-অসাম আইকনের জন্য সিডিএন লিংক -->
+<link rel="stylesheet" href="https://cloudflare.com" />
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+
+            <!-- ১. পেজ হেডার এবং ইন্ট্রোডাকশন -->
+            <div class="text-center mb-5">
+                <div class="avatar-lg bg-light text-primary rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; shadow: 0 .25rem .75rem rgba(0,0,0,.05);">
+                    <i class="fas fa-info-circle fs-1"></i>
+                </div>
+                <h1 class="fw-bold text-dark mb-2">Electronic Toll Collection (ETC)</h1>
+                <p class="text-muted lead mx-auto" style="max-width: 700px;">
+                    A secure, high-performance back-office administration infrastructure designed for seamless financial clearing, transaction processing, and Core Banking System (CBS) integration.
+                </p>
+                <span class="badge bg-primary px-3 py-2 rounded-pill font-monospace">Version 1.0.0 (Production)</span>
+            </div>
+
+            <!-- ২. সিস্টেমের মূল বৈশিষ্ট্যসমূহ (Core Architecture Modules) -->
+            <div class="row g-4 mb-5">
+                <div class="col-md-4">
+                    <div class="card h-100 shadow-sm border-0 rounded-3 p-3">
+                        <div class="card-body">
+                            <div class="text-warning fs-3 mb-2"><i class="fas fa-network-wired"></i></div>
+                            <h5 class="fw-bold text-dark">Microservices & Gateway</h5>
+                            <p class="text-muted small mb-0">Driven by a central API Gateway logic (`ETCGatewayAPI`) that securely authenticates, routes, and manages telemetry between distributed operations.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 shadow-sm border-0 rounded-3 p-3">
+                        <div class="card-body">
+                            <div class="text-success fs-3 mb-2"><i class="fas fa-file-invoice-dollar"></i></div>
+                            <h5 class="fw-bold text-dark">CBS Automated Settlement</h5>
+                            <p class="text-muted small mb-0">Enables fast processing of high-volume transaction sets via `SettlementService` with double-entry accounting integration for accurate batch validation.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 shadow-sm border-0 rounded-3 p-3">
+                        <div class="card-body">
+                            <div class="text-primary fs-3 mb-2"><i class="fas fa-shield-halved"></i></div>
+                            <h5 class="fw-bold text-dark">Enterprise Security</h5>
+                            <p class="text-muted small mb-0">Features cookie-based session protection, anti-forgery layer authorization (`CSRF Guard`), and cryptographically secure state management.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ৩. প্রযুক্তিগত বিবরণ এবং সিস্টেম স্ট্যাটাস (Technical Specs Sheet) -->
+            <div class="card shadow-sm border-0 rounded-3 mb-5">
+                <div class="card-header bg-light border-0 py-3">
+                    <h5 class="mb-0 fw-bold text-secondary"><i class="fas fa-sliders-h me-2"></i> Technical Specifications & Environment</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped mb-0 align-middle">
+                            <tbody>
+                                <tr>
+                                    <td class="fw-semibold ps-4 text-muted" style="width: 35%;">Application Framework</td>
+                                    <td class="text-dark">ASP.NET Core 8.0 (Model-View-Controller)</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold ps-4 text-muted">Primary Data Provider</td>
+                                    <td class="text-dark">Entity Framework Core (PostgreSQL Engine v8.0.11)</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold ps-4 text-muted">API Serialization</td>
+                                    <td class="text-dark">Newtonsoft.Json Utilities (v13.0.3)</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold ps-4 text-muted">Server Status & Cluster</td>
+                                    <td class="text-dark"><span class="badge bg-success"><i class="fas fa-circle-check me-1"></i> Active & Healthy</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ৪. সিস্টেম কপিরাইট ফুটার নোটিশ -->
+            <div class="text-center text-muted small mt-4">
+                <p>Designed and maintained for enterprise network operations. All rights reserved.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

@@ -1,9 +1,152 @@
 ﻿@{
-    ViewData["Title"] = "Home Page";
+    ViewData["Title"] = "Dashboard";
     Layout = "~/Views/Shared/_Layout.cshtml";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<!-- ফন্ট-অসাম আইকনের জন্য সিডিএন লিংক -->
+<link rel="stylesheet" href="https://cloudflare.com" />
+
+<div class="container mt-4">
+    <!-- ১. স্বাগত ব্যানার (Welcome Banner) -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card bg-gradient bg-primary text-white border-0 shadow-sm rounded-3">
+                <div class="card-body p-4 d-flex align-items-center justify-content-between flex-wrap">
+                    <div>
+                        <h2 class="fw-bold mb-1">Welcome back to ETC Admin Portal!</h2>
+                        <p class="mb-0 text-white-50">Manage your toll, top-up processing, and account settings effectively.</p>
+                    </div>
+                    <div class="d-none d-md-block fs-1 opacity-25 pe-3">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ২. দ্রুত পরিসংখ্যান প্যানেল (Quick Stats Grid) -->
+    <div class="row g-3 mb-4">
+        <!-- কার্ড ১ -->
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 border-start border-4 border-warning h-100">
+                <div class="card-body py-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <h6 class="text-muted fw-semibold small text-uppercase mb-1">Toll Operations</h6>
+                            <span class="text-dark small">Pending Toll Batches</span>
+                        </div>
+                        <div class="bg-light text-warning rounded-circle p-3 fs-4">
+                            <i class="fas fa-car"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- কার্ড ২ -->
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 border-start border-4 border-success h-100">
+                <div class="card-body py-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <h6 class="text-muted fw-semibold small text-uppercase mb-1">TopUp System</h6>
+                            <span class="text-dark small">Credit Active Status</span>
+                        </div>
+                        <div class="bg-light text-success rounded-circle p-3 fs-4">
+                            <i class="fas fa-mobile-alt"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- কার্ড ৩ -->
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 border-start border-4 border-primary h-100">
+                <div class="card-body py-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <h6 class="text-muted fw-semibold small text-uppercase mb-1">System Security</h6>
+                            <span class="text-dark small">Encrypted Authentication</span>
+                        </div>
+                        <div class="bg-light text-primary rounded-circle p-3 fs-4">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ৩. মডিউল কুইক লিংক অ্যাকশনসমূহ (Main Features Quick Access) -->
+    <h5 class="text-secondary mb-3 fw-semibold"><i class="fas fa-th-large me-2"></i> Quick Modules Access</h5>
+    <div class="row g-4">
+        <!-- মডিউল ১: Settlement Process -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm border-0 rounded-3 text-center p-3 feature-card">
+                <div class="card-body d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="avatar-lg bg-light text-primary rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center" style="width: 70px; height: 70px;">
+                            <i class="fas fa-file-invoice-dollar fs-2"></i>
+                        </div>
+                        <h5 class="fw-bold text-dark mb-2">Settlement Panel</h5>
+                        <p class="text-muted small">Execute Toll & TopUp data processing and batch post directly to the CBS architecture.</p>
+                    </div>
+                    <a asp-controller="Settlement" asp-action="Index" class="btn btn-outline-primary btn-sm rounded-pill mt-3 px-4 fw-semibold">
+                        Open Panel <i class="fas fa-arrow-right ms-1 small"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- মডিউল ২: Security & Password Change -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm border-0 rounded-3 text-center p-3 feature-card">
+                <div class="card-body d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="avatar-lg bg-light text-danger rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center" style="width: 70px; height: 70px;">
+                            <i class="fas fa-user-shield fs-2"></i>
+                        </div>
+                        <h5 class="fw-bold text-dark mb-2">Change Password</h5>
+                        <p class="text-muted small">Keep your administrator credentials secure by rotating your login password securely.</p>
+                    </div>
+                    <a asp-controller="Account" asp-action="PasswordChange" class="btn btn-outline-danger btn-sm rounded-pill mt-3 px-4 fw-semibold">
+                        Change Now <i class="fas fa-arrow-right ms-1 small"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- মডিউল ৩: Branch Help & Info (ঐচ্ছিক/ভবিষ্যত ব্যবহারের জন্য) -->
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 shadow-sm border-0 rounded-3 text-center p-3 feature-card">
+                <div class="card-body d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="avatar-lg bg-light text-secondary rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center" style="width: 70px; height: 70px;">
+                            <i class="fas fa-network-wired fs-2"></i>
+                        </div>
+                        <h5 class="fw-bold text-dark mb-2">System Logs</h5>
+                        <p class="text-muted small">View transaction flows, check logs, and manage system monitoring utilities smoothly.</p>
+                    </div>
+                    <button class="btn btn-outline-secondary btn-sm rounded-pill mt-3 px-4 fw-semibold" disabled>
+                        Under Review <i class="fas fa-lock ms-1 small"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+
+<!-- কাস্টম হোভার এনিমেশন সিএসএস (CSS Style Block) -->
+<style>
+    .bg-gradient-primary {
+        background: linear-gradient(45deg, #0d6efd, #0dcaf0);
+    }
+    .feature-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .feature-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.15)!important;
+    }
+</style>

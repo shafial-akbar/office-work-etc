@@ -1,0 +1,86 @@
+﻿@{
+    ViewData["Title"] = "Help & Support";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<!-- ফন্ট-অসাম আইকনের জন্য সিডিএন লিংক -->
+<link rel="stylesheet" href="https://cloudflare.com" />
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-9">
+
+            <!-- ১. পেজ হেডার সেকশন -->
+            <div class="text-center mb-5">
+                <div class="avatar-lg bg-light text-success rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center" style="width: 75px; height: 75px; box-shadow: 0 .25rem .75rem rgba(0,0,0,.05);">
+                    <i class="fas fa-headset fs-1"></i>
+                </div>
+                <h2 class="fw-bold text-dark mb-1">Help & Documentation Center</h2>
+                <p class="text-muted">Find system guides, operational manuals, and support details for the ETC Admin Portal.</p>
+            </div>
+
+            <div class="row g-4">
+                <!-- ২. বাম পাশ: ইউজার ম্যানুয়াল ডাউনলোড কার্ড -->
+                <div class="col-md-6">
+                    <div class="card h-100 shadow-sm border-0 rounded-3 p-3 text-center">
+                        <div class="card-body d-flex flex-column justify-content-between">
+                            <div>
+                                <div class="text-danger fs-1 mb-3">
+                                    <i class="fas fa-file-pdf"></i>
+                                </div>
+                                <h4 class="fw-bold text-dark mb-2">User Manual</h4>
+                                <p class="text-muted small">Download the complete operational guide covering Toll Settlement, TopUp processing, and configuration steps.</p>
+                            </div>
+
+                            <!-- 🚀 ইউজার ম্যানুয়াল ডাউনলোডের আসল লিংক (download এট্রিবিউট সহ) -->
+                            <div class="mt-4">
+                                <a href="/file/ETC_Admin_User_manual.pdf" download class="btn btn-danger btn-lg w-100 py-3 fw-bold shadow-sm rounded-pill">
+                                    <i class="fas fa-download me-2"></i> Download Manual (PDF)
+                                </a>
+                                <span class="d-block text-muted small mt-2">Format: PDF | Recommended for Admins</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ৩. ডান পাশ: কুইক হেল্প বা এফএকিউ (FAQ) -->
+                <div class="col-md-6">
+                    <div class="card h-100 shadow-sm border-0 rounded-3 p-3">
+                        <div class="card-body">
+                            <h5 class="fw-bold text-dark mb-3"><i class="fas fa-question-circle text-primary me-2"></i> Quick FAQs</h5>
+
+                            <div class="mb-3 border-bottom pb-2">
+                                <h6 class="fw-semibold text-secondary mb-1">How long does a settlement take?</h6>
+                                <p class="text-muted small mb-0">Data processing happens instantly, and posting to the Core Banking System (CBS) depends on queue load.</p>
+                            </div>
+
+                            <div class="mb-3 border-bottom pb-2">
+                                <h6 class="fw-semibold text-secondary mb-1">What if a batch post fails?</h6>
+                                <p class="text-muted small mb-0">If the CBS returns a failure response, the batch will remain in the 'Processing' pool for a retry.</p>
+                            </div>
+
+                            <div class="mb-0">
+                                <h6 class="fw-semibold text-secondary mb-1">When should I change my password?</h6>
+                                <p class="text-muted small mb-0">For corporate compliance, it is recommended to rotate administrative passwords every 90 days.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ৪. টেকনিক্যাল সাপোর্ট ডেক্স নোটিশ -->
+            <div class="card bg-light border-0 rounded-3 mt-4 shadow-sm">
+                <div class="card-body p-4 d-flex align-items-center flex-wrap flex-md-nowrap">
+                    <div class="fs-2 text-primary pe-4 mb-3 mb-md-0 mx-auto mx-md-0">
+                        <i class="fas fa-info-circle"></i>
+                    </div>
+                    <div class="text-center text-md-start">
+                        <h6 class="fw-bold text-dark mb-1">Need technical assistance?</h6>
+                        <p class="text-muted small mb-0">If you encounter any operational blockages or API errors, please contact the internal IT Infrastructure Team or review the system telemetry logs.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>

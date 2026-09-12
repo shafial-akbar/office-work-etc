@@ -1,0 +1,137 @@
+﻿@{
+    ViewData["Title"] = "Settlement Processing Panel";
+}
+
+<div class="container mt-5">
+    <div class="card shadow-lg border-0">
+        <div class="card-header bg-primary text-white py-3">
+            <h4 class="mb-0"><i class="fas stroke-widening"></i> 📊 Settlement & Data Processing Panel</h4>
+        </div>
+        <div class="card-body p-4">
+
+            <!-- এন্টি-ফোর্জারি টোকেন (AJAX রিকোয়েস্ট সিকিউরিটির জন্য) -->
+            @Html.AntiForgeryToken()
+
+            <div class="row g-4">
+                <!-- বাম পাশ: অপারেশন প্যারামিটার সিলেকশন -->
+                <div class="col-md-5 border-end">
+                    <h5 class="text-secondary mb-3"><i class="fas stroke-widening"></i> ⚙️ Select Parameters</h5>
+
+                    <div class="mb-3">
+                        <label for="bankTxnDate" class="form-label fw-bold">Transaction Date:</label>
+                        <input type="date" id="bankTxnDate" class="form-control form-control-lg" value="@DateTime.Today.ToString("yyyy-MM-dd")" required />
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="settlementOperation" class="form-label fw-bold">Operation Type:</label>
+                        <select id="settlementOperation" class="form-select form-control-lg" required>
+                            <option value="Toll">🚗 Toll Processing</option>
+                            <option value="TopUp">📱 TopUp Processing</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- ডান পাশ: অ্যাকশন বাটনসমূহ -->
+                <div class="col-md-7 d-flex flex-column justify-content-center ps-md-5">
+                    <h5 class="text-secondary mb-3"><i class="fas stroke-widening"></i> 🚀 Execute Operations</h5>
+
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <button type="button" id="btnProcess" class="btn btn-warning btn-lg w-100 py-3 fw-bold text-dark shadow-sm">
+                                <i class="fas stroke-widening"></i> 1. Run Data Process
+                            </button>
+                        </div>
+                        <div class="col-sm-6">
+                            <button type="button" id="btnSettle" class="btn btn-success btn-lg w-100 py-3 fw-bold shadow-sm">
+                                <i class="fas stroke-widening"></i> 2. Execute Settlement
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- প্রসেস লেডার বা লোডার এনিমেশন -->
+                    <div id="loader" class="mt-4 text-center d-none">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-muted fw-bold">Executing system transaction, please wait...</p>
+                    </div>
+
+                    <!-- রেসপন্স মেসেজ ডিসপ্লে অ্যালার্ট -->
+                    <div id="responseAlert" class="alert mt-4 d-none" role="alert"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://jquery.com"></script>
+    <script>
+        $(document).ready(function () {
+
+            // কমন ফাংশন: AJAX কল এক্সিকিউট করার জন্য
+            function executeAction(actionUrl, buttonId) {
+                var dateVal = $("#bankTxnDate").value;
+                var opVal = $("#settlementOperation").val();
+                var token = $('input[name="__RequestVerificationToken"]').val();
+
+                if (!dateVal) {
+                    showAlert("danger", "Please select a valid transaction date.");
+                    return;
+                }
+
+                // UI লক ও লোডার অন করা
+                $("#loader").removeClass("d-none");
+                $("#responseAlert").addClass("d-none");
+                $("#btnProcess, #btnSettle").prop("disabled", true);
+
+                $.ajax({
+                    url: actionUrl,
+                    type: "POST",
+                    data: {
+                        bankTxnDate: dateVal,
+                        settlementOperation: opVal,
+                        __RequestVerificationToken: token
+                    },
+                    success: function (res) {
+                        $("#loader").addClass("d-none");
+                        $("#btnProcess, #btnSettle").prop("disabled", false);
+
+                        if (res.httpCode === 200) {
+                            showAlert("success", "<strong>Success (200 OK):</strong> " + res.message);
+                        } else if (res.httpCode === 409) {
+                            showAlert("warning", "<strong>Conflict (409):</strong> " + res.message);
+                        } else if (res.httpCode === 404) {
+                            showAlert("info", "<strong>Not Found (404):</strong> " + res.message);
+                        } else {
+                            showAlert("danger", "<strong>Error (" + res.httpCode + "):</strong> " + res.message);
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        $("#loader").addClass("d-none");
+                        $("#btnProcess, #btnSettle").prop("disabled", false);
+                        showAlert("danger", "System connection failed or internal server error occurred.");
+                    }
+                });
+            }
+
+            // অ্যালার্ট দেখানোর হেল্পার ফাংশন
+            function showAlert(type, message) {
+                $("#responseAlert")
+                    .removeClass("d-none alert-success alert-danger alert-warning alert-info")
+                    .addClass("alert-" + type)
+                    .html(message);
+            }
+
+            // বাটন ইভেন্ট হ্যান্ডলার বাইন্ডিং
+            $("#btnProcess").click(function () {
+                executeAction("/Settlement/DoDataprocess", "#btnProcess");
+            });
+
+            $("#btnSettle").click(function () {
+                if (confirm("Are you sure you want to post this settlement to CBS?")) {
+                    executeAction("/Settlement/DoSettlement", "#btnSettle");
+                }
+            });
+        }
+    </script>
+}
