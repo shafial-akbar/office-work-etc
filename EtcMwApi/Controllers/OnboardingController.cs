@@ -155,6 +155,48 @@ namespace EtcMwApi.Controllers
             }
         }
 
+        [HttpPost("send-wallet-otp")]
+        public async Task<IActionResult> SendWalletOtp([FromBody] SendWalletOtpRequestDto dto)
+        {
+            var logId = await _requestLogService.LogRequest(Request);
+
+            if (!ModelState.IsValid)
+            {
+                var validationError = new SendWalletOtpResponseDto
+                {
+                    HttpCode = 400,
+                    HttpStatus = "Bad Request",
+                    Message = "Invalid model state or missing required fields."
+                };
+
+                await _requestLogService.LogResponse(logId, validationError);
+                return BadRequest(ModelState);
+            }
+
+            try
+            {
+                var result = await _onboardingService.SendWalletCreationOtpAsync(dto);
+                await _requestLogService.LogResponse(logId, result);
+
+                int statusCode = result.HttpCode > 0 ? result.HttpCode : 200;
+                return StatusCode(statusCode, result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error occurred during sending wallet OTP.");
+
+                var errorResponse = new SendWalletOtpResponseDto
+                {
+                    HttpCode = 500,
+                    HttpStatus = "Internal Server Error",
+                    Message = "An unexpected error occurred."
+                };
+
+                await _requestLogService.LogResponse(logId, errorResponse);
+                return StatusCode(500, errorResponse);
+            }
+        }
+
         [HttpPost("create-wallet")]
         public async Task<IActionResult> CreateWallet([FromBody] CreateNewWalletDto dto)
         {
@@ -196,6 +238,50 @@ namespace EtcMwApi.Controllers
                 return StatusCode(500, errorResponse);
             }
         }
+
+        #region "CreateWallet before otp"
+        //[HttpPost("create-wallet")]
+        //public async Task<IActionResult> CreateWallet([FromBody] CreateNewWalletDto dto)
+        //{
+        //    var logId = await _requestLogService.LogRequest(Request);
+
+        //    if (!ModelState.IsValid)
+        //    {
+        //        var validationError = new VehicleOnboardingResponseDto
+        //        {
+        //            HttpCode = 400,
+        //            HttpStatus = "Bad Request",
+        //            Message = "Invalid model state or missing required fields."
+        //        };
+
+        //        await _requestLogService.LogResponse(logId, validationError);
+        //        return BadRequest(ModelState);
+        //    }
+
+        //    try
+        //    {
+        //        var result = await _onboardingService.CreateNewWalletAsync(dto);
+        //        await _requestLogService.LogResponse(logId, result);
+
+        //        int statusCode = result.HttpCode > 0 ? result.HttpCode : 200;
+        //        return StatusCode(statusCode, result);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Unexpected error occurred during wallet creation for CustomerGuid: {CustomerGuid}", dto.CustomerGuid);
+
+        //        var errorResponse = new VehicleOnboardingResponseDto
+        //        {
+        //            HttpCode = 500,
+        //            HttpStatus = "Internal Server Error",
+        //            Message = "An unexpected error occurred."
+        //        };
+
+        //        await _requestLogService.LogResponse(logId, errorResponse);
+        //        return StatusCode(500, errorResponse);
+        //    }
+        //}
+        #endregion
 
         [HttpPost("unregister-vehicle")]
         public async Task<IActionResult> UnregisterVehicle([FromBody] VehicleUnregisterDto request)

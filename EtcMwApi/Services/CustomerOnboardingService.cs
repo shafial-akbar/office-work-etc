@@ -11,15 +11,18 @@ namespace EtcMwApi.Services
     {
         private readonly DatabaseContext _context;
         private readonly IRhdApiService _rhdApiService;
+        private readonly IOtpService _otpService;
         private readonly ILogger<CustomerOnboardingService> _logger;
 
         public CustomerOnboardingService(
             DatabaseContext context,
             IRhdApiService rhdApiService,
+            IOtpService otpService,
             ILogger<CustomerOnboardingService> logger)
         {
             _context = context;
             _rhdApiService = rhdApiService;
+            _otpService = otpService;
             _logger = logger;
         }
 
@@ -111,31 +114,106 @@ namespace EtcMwApi.Services
             }
         }
 
+        public async Task<SendWalletOtpResponseDto> SendWalletCreationOtpAsync(SendWalletOtpRequestDto dto)
+        {
+            try
+            {
+                // ১. কাস্টমার ভ্যালিডেশন
+                var customer = await _context.Customers.FindAsync(dto.CustomerGuid)
+                    ?? throw new KeyNotFoundException($"Customer not found with ID: {dto.CustomerGuid}");
+
+                // ২. লোকাল ডাটাবেজ প্রাক-যাচাই (Mobile ও Vehicle)
+                await ValidateMobileNumberAvailabilityAsync(dto.NewMobileNo);
+                await ValidateLocalVehicleExistenceAsync(dto.VehicleRegistrationNumber);
+
+                // ৩. এক্সটার্নাল RHD চেক (গাড়িটি অন্য কারও আন্ডারে রেজিস্টার্ড কিনা)
+                await FetchAndValidateRhdVehicleAsync(dto.VehicleRegistrationNumber, dto.CompanyOid);
+
+                // ৪. ইউনিক OTP Reference ID তৈরি
+                string refId = $"{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
+
+                // ৫. SBL OTP সার্ভিসের মাধ্যমে SMS প্রেরণ
+                var otpResult = await _otpService.SendOtpAsync(dto.NewMobileNo, refId);
+                if (!otpResult.Success)
+                {
+                    _logger.LogWarning("Failed to send wallet creation OTP to Mobile: {MobileNo}. Reason: {Reason}",
+                        dto.NewMobileNo, otpResult.Message);
+
+                    return new SendWalletOtpResponseDto
+                    {
+                        HttpCode = 400,
+                        HttpStatus = "Bad Request",
+                        Message = otpResult.Message
+                    };
+                }
+
+                _logger.LogInformation("Wallet creation OTP sent successfully to Mobile: {MobileNo}, RefId: {RefId}",
+                    dto.NewMobileNo, refId);
+
+                // ৬. সফল রেসপন্স (200 OK সহ OtpRefId রিটার্ন)
+                return new SendWalletOtpResponseDto
+                {
+                    HttpCode = 200,
+                    HttpStatus = "OK",
+                    Message = $"OTP sent successfully to {dto.NewMobileNo}",
+                    OtpRefId = refId
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send wallet creation OTP for CustomerId: {CustomerId}", dto.CustomerGuid);
+
+                return new SendWalletOtpResponseDto
+                {
+                    HttpCode = ex is KeyNotFoundException ? 404 : (ex is ArgumentException || ex is InvalidOperationException ? 400 : 500),
+                    HttpStatus = ex is KeyNotFoundException ? "Not Found" : (ex is ArgumentException || ex is InvalidOperationException ? "Bad Request" : "Internal Server Error"),
+                    Message = ex.Message
+                };
+            }
+        }
+
         public async Task<VehicleOnboardingResponseDto> CreateNewWalletAsync(CreateNewWalletDto dto)
         {
             try
             {
+                // ০. ওটিপি যাচাইকরণ (DB বা RHD অপারেশনের পূর্বেই Fail-Fast নিশ্চিত করা)
+                var otpVerification = await _otpService.VerifyOtpAsync(dto.NewMobileNo, dto.OtpRefId, dto.Otp);
+                if (!otpVerification.Success)
+                {
+                    _logger.LogWarning("Wallet creation rejected due to invalid OTP for Mobile: {MobileNo}, RefId: {RefId}",
+                        dto.NewMobileNo, dto.OtpRefId);
+
+                    return new VehicleOnboardingResponseDto
+                    {
+                        HttpCode = 400,
+                        HttpStatus = "Bad Request",
+                        Message = otpVerification.Message
+                    };
+                }
+
+                // ১. লোকাল ডাটাবেজ প্রাক-যাচাই
                 var customer = await _context.Customers.FindAsync(dto.CustomerGuid)
                     ?? throw new KeyNotFoundException($"Customer not found with ID: {dto.CustomerGuid}");
 
                 await ValidateMobileNumberAvailabilityAsync(dto.NewMobileNo);
                 await ValidateLocalVehicleExistenceAsync(dto.VehicleRegistrationNumber);
 
-                // 1. Common External Check
+                // ২. এক্সটার্নাল RHD চেক
                 var rhdVehicleData = await FetchAndValidateRhdVehicleAsync(dto.VehicleRegistrationNumber, dto.CompanyOid);
 
                 using var transaction = await _context.Database.BeginTransactionAsync();
                 try
                 {
+                    // ৩. ওয়ালেট তৈরি
                     var wallet = await CreateWalletEntityAsync(customer.Id, dto.NewMobileNo);
 
-                    // 2. Common Mapping
+                    // ৪. ভেহিকেল ম্যাপিং ও সেভ
                     var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
 
                     await _context.Vehicles.AddAsync(vehicle);
                     await _context.SaveChangesAsync();
 
-                    // 3. Common Remote Registration
+                    // ৫. রিমোট RHD রেজিস্ট্রেশন কনফার্ম করা
                     await ConfirmRhdRegistrationAsync(
                         dto.VehicleRegistrationNumber,
                         wallet.MobileNo,
@@ -144,9 +222,10 @@ namespace EtcMwApi.Services
                         "New Wallet Creation & Vehicle Registration");
 
                     await transaction.CommitAsync();
-                    _logger.LogInformation("New Wallet {WalletNo} and Vehicle registered for CustomerId: {CustomerId}", wallet.WalletNo, customer.CustomerId);
+                    _logger.LogInformation("New Wallet {WalletNo} and Vehicle registered for CustomerId: {CustomerId}",
+                        wallet.WalletNo, customer.CustomerId);
 
-                    // 4. Response DTO Return (200 OK)
+                    // ৬. সফল রেসপন্স রিটার্ন (200 OK)
                     return new VehicleOnboardingResponseDto
                     {
                         HttpCode = 200,
@@ -181,6 +260,80 @@ namespace EtcMwApi.Services
                 };
             }
         }
+
+        #region "CreateNewWalletAsync before otp"
+        //public async Task<VehicleOnboardingResponseDto> CreateNewWalletAsync(CreateNewWalletDto dto)
+        //{
+        //    try
+        //    {
+        //        var customer = await _context.Customers.FindAsync(dto.CustomerGuid)
+        //            ?? throw new KeyNotFoundException($"Customer not found with ID: {dto.CustomerGuid}");
+
+        //        await ValidateMobileNumberAvailabilityAsync(dto.NewMobileNo);
+        //        await ValidateLocalVehicleExistenceAsync(dto.VehicleRegistrationNumber);
+
+        //        // 1. Common External Check
+        //        var rhdVehicleData = await FetchAndValidateRhdVehicleAsync(dto.VehicleRegistrationNumber, dto.CompanyOid);
+
+        //        using var transaction = await _context.Database.BeginTransactionAsync();
+        //        try
+        //        {
+        //            var wallet = await CreateWalletEntityAsync(customer.Id, dto.NewMobileNo);
+
+        //            // 2. Common Mapping
+        //            var vehicle = MapToVehicleInformation(dto.VehicleRegistrationNumber, wallet.Id, rhdVehicleData);
+
+        //            await _context.Vehicles.AddAsync(vehicle);
+        //            await _context.SaveChangesAsync();
+
+        //            // 3. Common Remote Registration
+        //            await ConfirmRhdRegistrationAsync(
+        //                dto.VehicleRegistrationNumber,
+        //                wallet.MobileNo,
+        //                wallet.WalletNo,
+        //                dto.CompanyOid,
+        //                "New Wallet Creation & Vehicle Registration");
+
+        //            await transaction.CommitAsync();
+        //            _logger.LogInformation("New Wallet {WalletNo} and Vehicle registered for CustomerId: {CustomerId}", wallet.WalletNo, customer.CustomerId);
+
+        //            // 4. Response DTO Return (200 OK)
+        //            return new VehicleOnboardingResponseDto
+        //            {
+        //                HttpCode = 200,
+        //                HttpStatus = "OK",
+        //                VehicleGuid = vehicle.Id,
+        //                VehicleRegistrationNumber = vehicle.VehicleRegistrationNumber,
+        //                WalletGuid = wallet.Id,
+        //                WalletNo = wallet.WalletNo,
+        //                MobileNo = wallet.MobileNo,
+        //                BrtaClass = vehicle.BrtaClass,
+        //                RhdClass = vehicle.RhdClass,
+        //                ChassisNo = vehicle.ChassisNo,
+        //                AddedAt = DateTime.UtcNow,
+        //                Message = $"Vehicle : {vehicle.VehicleRegistrationNumber} successfully registered and added to wallet : {wallet.WalletNo}"
+        //            };
+        //        }
+        //        catch (Exception)
+        //        {
+        //            await transaction.RollbackAsync();
+        //            throw;
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Failed to create new wallet for customer: {CustomerId}", dto.CustomerGuid);
+
+        //        return new VehicleOnboardingResponseDto
+        //        {
+        //            HttpCode = ex is KeyNotFoundException ? 404 : (ex is ArgumentException || ex is InvalidOperationException ? 400 : 500),
+        //            HttpStatus = ex is KeyNotFoundException ? "Not Found" : (ex is ArgumentException || ex is InvalidOperationException ? "Bad Request" : "Internal Server Error"),
+        //            Message = ex.Message
+        //        };
+        //    }
+        //}
+
+        #endregion
 
         public async Task<VehicleOnboardingResponseDto> AddVehicleToWalletAsync(AddVehicleToWalletDto dto)
         {

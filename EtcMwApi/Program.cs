@@ -60,6 +60,23 @@ builder.Services.AddScoped<IVehicleService, VehicleService>();
 builder.Services.AddScoped<ICustomerOnboardingService, CustomerOnboardingService>();
 builder.Services.AddScoped<ICustomerInquiryService, CustomerInquiryService>();
 
+builder.Services.AddHttpClient<IOtpService, OtpService>((sp, client) =>
+{
+    var config = sp.GetRequiredService<IConfiguration>().GetSection("SblOtpService");
+
+    string baseUrl = config["BaseUrl"] ?? "http://192.168.6.2:3553/";
+    client.BaseAddress = new Uri(baseUrl);
+
+    string? auth = config["Authorization"];
+    string? apiKey = config["ApiKey"];
+
+    if (!string.IsNullOrWhiteSpace(auth))
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
+
+    if (!string.IsNullOrWhiteSpace(apiKey))
+        client.DefaultRequestHeaders.Add("API_KEY", apiKey);
+});
+
 // External & Utility Services
 builder.Services.AddScoped<IRhdApiService, RhdApiService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
