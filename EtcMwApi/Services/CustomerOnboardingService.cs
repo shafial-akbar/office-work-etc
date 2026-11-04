@@ -130,7 +130,7 @@ namespace EtcMwApi.Services
                 await FetchAndValidateRhdVehicleAsync(dto.VehicleRegistrationNumber, dto.CompanyOid);
 
                 // ৪. ইউনিক OTP Reference ID তৈরি
-                string refId = $"{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
+                string refId = $"ETC{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
 
                 // ৫. SBL OTP সার্ভিসের মাধ্যমে SMS প্রেরণ
                 var otpResult = await _otpService.SendOtpAsync(dto.NewMobileNo, refId);
