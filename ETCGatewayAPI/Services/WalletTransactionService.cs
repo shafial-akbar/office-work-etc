@@ -538,6 +538,167 @@ namespace ETCGatewayAPI.Services
         }
 
         // ৩. টোল ট্রানজেকশন রিভার্সাল বা রিফান্ড (Toll Amount Reversal/Credit)
+
+        public async Task<DoTransactionResponse> ReverseTollSpAsync(ReverseTransactionRequest request)
+        {
+            var requestTime = DateTime.Now;
+            var bankTxnDate = DateTime.Now; // লগ ও DoTransactions টেবিলের সময় সিঙ্ক রাখার জন্য
+            string generatedReversalBankTxnId = $"{bankTxnDate:yyMMddHHmmss}{Random.Shared.Next(100000, 999999)}_REV";
+
+            try
+            {
+                // ১. PostgreSQL Stored Function কল
+                var spResult = await _context.Database
+                    .SqlQueryRaw<SpReverseTollResult>(
+                        @"SELECT * FROM fn_reversetoll({0}, {1}, {2}, {3}, {4})",
+                        request.PartnerId ?? "",
+                        request.PartnerTxnId ?? "",
+                        request.TransactionAmount,
+                        generatedReversalBankTxnId,
+                        bankTxnDate
+                    )
+                    .ToListAsync();
+
+                var result = spResult.FirstOrDefault();
+
+                // ২. রিভার্সাল ব্যর্থ হলে (HttpCode != 200)
+                if (result == null || result.http_code != 200)
+                {
+                    int statusCode = result?.http_code ?? 500;
+                    string statusMsg = result?.status_message ?? "Reversal processing failed.";
+
+                    _logger.LogWarning("Reversal Failed for PartnerTxnId: {PartnerTxnId}. Code: {Code}, Message: {Message}",
+                        request.PartnerTxnId, statusCode, statusMsg);
+
+                    var failedResponse = new DoTransactionResponse
+                    {
+                        HttpCode = statusCode,
+                        HttpStatus = statusCode switch
+                        {
+                            404 => "Not Found",
+                            409 => "Conflict",
+                            400 => "Bad Request",
+                            _ => "Internal Server Error"
+                        },
+                        Message = statusMsg
+                    };
+
+                    // Non-blocking Audit Logging (ফেল্ড রিকোয়েস্ট লগ)
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            using var scope = _serviceProvider.CreateScope();
+                            var scopedContext = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+                            await SaveTransactionLogAsync(
+                                dbContext: scopedContext,
+                                reverseRequest: request,
+                                response: failedResponse,
+                                requestTime: requestTime,
+                                status: "Failed",
+                                requestType: TranLogRequestType.TollReverse,
+                                tranMode: TranMode.Credit,
+                                sblTxnId: "",
+                                balanceBefore: result?.balance_before,
+                                balanceAfter: result?.balance_after,
+                                errorMessage: statusMsg
+                            );
+                        }
+                        catch (Exception logEx)
+                        {
+                            _logger.LogError(logEx, "Background logging failed for failed reversal of PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
+                        }
+                    });
+
+                    return failedResponse;
+                }
+
+                // ৩. সফল রেসপন্স অবজেক্ট তৈরি
+                var successResponse = new DoTransactionResponse
+                {
+                    HttpCode = 200,
+                    HttpStatus = "OK",
+                    Message = result.status_message,
+                    Body = new TransactionResultBody
+                    {
+                        BankTxnId = result.bank_txn_id,
+                        PartnerTxnId = request.PartnerTxnId,
+                        TranStatus = TranStatus.Success,
+                        TransactionAmount = request.TransactionAmount
+                    }
+                };
+
+                // Non-blocking Audit Logging (সফল ট্রানজেকশন লগ)
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var scope = _serviceProvider.CreateScope();
+                        var scopedContext = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+                        await SaveTransactionLogAsync(
+                            dbContext: scopedContext,
+                            reverseRequest: request,
+                            response: successResponse,
+                            requestTime: requestTime,
+                            status: "Success",
+                            requestType: TranLogRequestType.TollReverse,
+                            tranMode: TranMode.Credit,
+                            sblTxnId: result.bank_txn_id,
+                            balanceBefore: result.balance_before,
+                            balanceAfter: result.balance_after
+                        );
+                    }
+                    catch (Exception logEx)
+                    {
+                        _logger.LogError(logEx, "Background logging failed for successful reversal of PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
+                    }
+                });
+
+                _logger.LogInformation("Toll Reversal successful. Reversal BankTxnId: {BankTxnId}, PartnerTxnId: {PartnerTxnId}",
+                    result.bank_txn_id, request.PartnerTxnId);
+
+                return successResponse;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred during ReverseToll for PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
+
+                var errorResponse = new DoTransactionResponse
+                {
+                    HttpCode = 500,
+                    HttpStatus = "Internal Server Error",
+                    Message = "An error occurred while processing the transaction reversal."
+                };
+
+                // Non-blocking Audit Logging (এক্সেপশন লগ)
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var scope = _serviceProvider.CreateScope();
+                        var scopedContext = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+                        await SaveTransactionLogAsync(
+                            dbContext: scopedContext,
+                            reverseRequest: request,
+                            response: errorResponse,
+                            requestTime: requestTime,
+                            status: "Failed",
+                            requestType: TranLogRequestType.TollReverse,
+                            tranMode: TranMode.Credit,
+                            sblTxnId: "",
+                            errorMessage: ex.Message
+                        );
+                    }
+                    catch (Exception logEx)
+                    {
+                        _logger.LogError(logEx, "Background logging failed for reversal exception of PartnerTxnId: {PartnerTxnId}", request.PartnerTxnId);
+                    }
+                });
+
+                return errorResponse;
+            }
+        }
+
         public async Task<DoTransactionResponse> ReverseTollAsync(ReverseTransactionRequest request)
         {
             using var dbTransaction = await _context.Database.BeginTransactionAsync();

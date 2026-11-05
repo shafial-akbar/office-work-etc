@@ -1,0 +1,140 @@
+﻿CREATE OR REPLACE FUNCTION public.fn_reversetoll(p_partner_id character varying, p_partner_txn_id character varying, p_transaction_amount numeric, p_bank_txn_id character varying, p_bank_txn_date timestamp without time zone)
+ RETURNS TABLE(http_code integer, status_message character varying, bank_txn_id character varying, balance_before numeric, balance_after numeric)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_original_id UUID;
+    v_original_bank_txn_id VARCHAR;
+    v_original_amount NUMERIC;
+    v_original_tran_status VARCHAR;
+    v_original_settl_status VARCHAR;
+    v_source_account_no VARCHAR;
+    v_source_channel VARCHAR;
+    v_ref_no1 VARCHAR;
+    v_wallet_id UUID;
+    v_current_balance NUMERIC;
+    v_new_balance NUMERIC;
+    v_already_reversed_id UUID;
+BEGIN
+    -- ১. ডুপ্লিকেট রিভার্সাল চেক (ইতিমধ্যে রিভার্সাল ট্রানজেকশন তৈরি হয়েছে কিনা)
+    SELECT "Id" INTO v_already_reversed_id
+    FROM "TBL_DoTransactions"
+    WHERE "PartnerTxnId" = (p_partner_txn_id || '_REV') 
+      AND TRIM("PartnerId") = TRIM(p_partner_id)
+    LIMIT 1;
+
+    IF FOUND THEN
+        RETURN QUERY SELECT 409, 'Transaction has already been reversed.'::VARCHAR, ''::VARCHAR, 0::DECIMAL, 0::DECIMAL;
+        RETURN;
+    END IF;
+
+    -- ২. মূল ট্রানজেকশনটি খুঁজে বের করা এবং রো লক (FOR UPDATE)
+    SELECT "Id", "WalletId", "BankTxnId", "TransactionAmount", "TranStatus", "SettlStatus", 
+           COALESCE("SourceAccountNo", ''), COALESCE("SourceChannel", ''), COALESCE("RefNo1", '')
+    INTO v_original_id, v_wallet_id, v_original_bank_txn_id, v_original_amount, v_original_tran_status, v_original_settl_status,
+         v_source_account_no, v_source_channel, v_ref_no1
+    FROM "TBL_DoTransactions"
+    WHERE "PartnerTxnId" = p_partner_txn_id 
+      AND TRIM("PartnerId") = TRIM(p_partner_id)
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT 404, 'Original transaction not found to reverse.'::VARCHAR, ''::VARCHAR, 0::DECIMAL, 0::DECIMAL;
+        RETURN;
+    END IF;
+
+    -- ৩. মূল ট্রানজেকশনটি ইতোমধ্যে রিভার্সড কিনা চেক
+    IF v_original_tran_status = 'Reversed' THEN
+        RETURN QUERY SELECT 409, 'Transaction has already been reversed.'::VARCHAR, ''::VARCHAR, 0::DECIMAL, 0::DECIMAL;
+        RETURN;
+    END IF;
+
+    -- ৪. মূল ট্রানজেকশনটি Success স্ট্যাটাসে আছে কিনা তা যাচাই
+    IF v_original_tran_status != 'Success' THEN
+        RETURN QUERY SELECT 400, 'Only successful transactions can be reversed.'::VARCHAR, ''::VARCHAR, 0::DECIMAL, 0::DECIMAL;
+        RETURN;
+    END IF;
+
+    -- ৫. ট্রানজেকশনের অ্যামাউন্ট মিলছে কিনা যাচাই
+    IF v_original_amount != p_transaction_amount THEN
+        RETURN QUERY SELECT 400, 'Transaction amount mismatch.'::VARCHAR, ''::VARCHAR, 0::DECIMAL, 0::DECIMAL;
+        RETURN;
+    END IF;
+
+    -- ৬. ট্রানজেকশনটি ইতোমধ্যে EOD Settlement-এ চলে গেছে কিনা তা যাচাই
+    IF v_original_settl_status IN ('Settled', 'Processing') THEN
+        RETURN QUERY SELECT 400, 'Cannot reverse a transaction that has already been settled or is in processing.'::VARCHAR, ''::VARCHAR, 0::DECIMAL, 0::DECIMAL;
+        RETURN;
+    END IF;
+
+    -- ৭. ওয়ালেট সক্রিয়তা চেক এবং রো লক (FOR UPDATE)
+    SELECT "Id", "Balance" INTO v_wallet_id, v_current_balance
+    FROM "TBL_Wallets"
+    WHERE TRIM("WalletNo") = TRIM(p_partner_id) 
+      AND "Status" = 'Active'
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT 404, 'Active wallet not found.'::VARCHAR, ''::VARCHAR, 0::DECIMAL, 0::DECIMAL;
+        RETURN;
+    END IF;
+
+    -- ৮. মূল ট্রানজেকশনটির স্ট্যাটাস 'Reversed' এ আপডেট করা
+    UPDATE "TBL_DoTransactions"
+    SET "TranStatus" = 'Reversed',
+        "SettlStatus" = 'Reversed',
+        "ResponseMessage" = 'Transaction Reversed'
+    WHERE "Id" = v_original_id;
+
+    -- ৯. ওয়ালেটে ব্যালেন্স রিফান্ড/ক্রেডিট
+    v_new_balance := v_current_balance + p_transaction_amount;
+
+    UPDATE "TBL_Wallets"
+    SET "Balance" = v_new_balance,
+        "UpdatedAt" = p_bank_txn_date
+    WHERE "Id" = v_wallet_id;
+
+    -- ১০. TBL_DoTransactions টেবিলে নতুন Credit Reversal রেকর্ড ইনসার্ট করা
+    INSERT INTO "TBL_DoTransactions" (
+        "Id",
+        "WalletId",
+        "PartnerId",
+        "PartnerTxnId",
+        "PartnerTransactionDate",
+        "SourceAccountNo",
+        "TransactionAmount",
+        "TranMode",
+        "BankTxnId",
+        "BankTxnDate",
+        "TranStatus",
+        "SettlStatus",
+        "ResponseCode",
+        "ResponseMessage",
+        "SourceChannel",
+        "OriginalBankTxnId",
+        "RefNo1"
+    )
+    VALUES (
+        gen_random_uuid(),
+        v_wallet_id,
+        p_partner_id,
+        p_partner_txn_id || '_REV',
+        p_bank_txn_date,
+        v_source_account_no,
+        p_transaction_amount,
+        'Credit',
+        p_bank_txn_id,
+        p_bank_txn_date,
+        'Success',
+        'Pending',
+        '200',
+        'Toll Reversal Credit',
+        v_source_channel,
+        v_original_bank_txn_id,
+        v_ref_no1
+    );
+
+    RETURN QUERY SELECT 200, 'Transaction reversed and balance refunded successfully.'::VARCHAR, p_bank_txn_id, v_current_balance, v_new_balance;
+END;
+$function$
+;

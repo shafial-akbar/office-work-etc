@@ -1,0 +1,116 @@
+﻿CREATE OR REPLACE FUNCTION public.fn_deducttoll(
+    p_partner_id character varying, 
+    p_partner_txn_id character varying, 
+    p_partner_txn_date timestamp without time zone, 
+    p_source_account_no character varying, 
+    p_transaction_amount numeric, 
+    p_ref_no1 character varying, 
+    p_ref_no2 character varying, 
+    p_ref_no3 character varying, 
+    p_ref_no4 character varying, 
+    p_ref_no5 character varying, 
+    p_bank_txn_id character varying, 
+    p_bank_txn_date timestamp without time zone
+)
+RETURNS TABLE(
+    http_code integer, 
+    status_message character varying, 
+    bank_txn_id character varying, 
+    balance_before numeric, 
+    balance_after numeric
+)
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_wallet_id UUID;
+    v_current_balance DECIMAL;
+    v_new_balance DECIMAL;
+    v_existing_id UUID;
+BEGIN
+    -- ১. ডুপ্লিকেট ট্রানজেকশন চেক (স্পেস মুক্ত তুলনা)
+    SELECT "Id" INTO v_existing_id
+    FROM "TBL_DoTransactions"
+    WHERE "PartnerTxnId" = p_partner_txn_id 
+      AND TRIM("PartnerId") = TRIM(p_partner_id)
+    LIMIT 1;
+
+    IF FOUND THEN
+        RETURN QUERY SELECT 409, 'Duplicate transaction reference (PartnerTxnId already exists).'::VARCHAR, ''::VARCHAR, 0::DECIMAL, 0::DECIMAL;
+        RETURN;
+    END IF;
+
+    -- ২. ওয়ালেট অনুসন্ধান এবং রো লক (FOR UPDATE)
+    SELECT "Id", "Balance" INTO v_wallet_id, v_current_balance
+    FROM "TBL_Wallets"
+    WHERE TRIM("WalletNo") = TRIM(p_partner_id) 
+      AND ("Status" = 'Active' OR "Status" = '1')
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT 404, 'Active wallet not found.'::VARCHAR, ''::VARCHAR, 0::DECIMAL, 0::DECIMAL;
+        RETURN;
+    END IF;
+
+    -- ৩. পর্যাপ্ত ব্যালেন্স যাচাই
+    IF v_current_balance < p_transaction_amount THEN
+        RETURN QUERY SELECT 400, 'Insufficient balance in wallet.'::VARCHAR, ''::VARCHAR, v_current_balance, v_current_balance;
+        RETURN;
+    END IF;
+
+    -- ৪. ব্যালেন্স কর্তন হিসাব ও আপডেট (TBL_Wallets)
+    v_new_balance := v_current_balance - p_transaction_amount;
+    
+    UPDATE "TBL_Wallets"
+    SET "Balance" = v_new_balance,
+        "UpdatedAt" = p_bank_txn_date
+    WHERE "Id" = v_wallet_id;
+
+    -- ৫. ট্রানজেকশন রেকর্ড সংরক্ষণ (TBL_DoTransactions)
+    INSERT INTO "TBL_DoTransactions" (
+        "Id",
+        "WalletId",
+        "PartnerId",
+        "PartnerTxnId",
+        "PartnerTransactionDate",
+        "SourceAccountNo",
+        "TransactionAmount",
+        "RefNo1",
+        "RefNo2",
+        "RefNo3",
+        "RefNo4",
+        "RefNo5",
+        "TranMode",
+        "BankTxnId",
+        "BankTxnDate",
+        "TranStatus",
+        "SettlStatus",
+        "ResponseCode",
+        "ResponseMessage",
+        "SourceChannel"
+    )
+    VALUES (
+        gen_random_uuid(),
+        v_wallet_id,
+        p_partner_id,
+        p_partner_txn_id,
+        p_partner_txn_date,
+        p_source_account_no,
+        p_transaction_amount,
+        p_ref_no1,
+        p_ref_no2,
+        p_ref_no3,
+        p_ref_no4,
+        p_ref_no5,
+        'Debit',             -- Constants.TranMode.Debit
+        p_bank_txn_id,
+        p_bank_txn_date,
+        'Success',           -- Constants.TranStatus.Success (পূর্বে ভুলভাবে '1' ছিল)
+        'Pending',           -- Constants.SettlementStatus.Pending (পূর্বে ভুলভাবে '0' ছিল)
+        '200',
+        'Success',
+        COALESCE(p_ref_no5, '') -- NOT NULL কনস্ট্রেইন্ট বজায় রাখার জন্য
+    );
+
+    RETURN QUERY SELECT 200, 'Toll amount deducted successfully.'::VARCHAR, p_bank_txn_id, v_current_balance, v_new_balance;
+END;
+$function$;

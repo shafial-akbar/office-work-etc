@@ -128,7 +128,7 @@ namespace ETCGatewayAPI.Controllers
 
             try
             {
-                var result = await _walletTransactionService.ReverseTollAsync(reversalDto);
+                var result = await _walletTransactionService.ReverseTollSpAsync(reversalDto);
 
                 return StatusCode(result.HttpCode, result);
             }

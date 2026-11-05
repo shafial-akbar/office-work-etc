@@ -18,6 +18,8 @@ namespace Etc.Shared.Interfaces
         // ৩. টোল ট্রানজেকশন রিভার্সাল বা রিফান্ড (Toll Amount Reversal/Credit)
         Task<DoTransactionResponse> ReverseTollAsync(ReverseTransactionRequest reversalDto);
 
+        Task<DoTransactionResponse> ReverseTollSpAsync(ReverseTransactionRequest reversalDto);
+
         // 4. Reconcile
         Task<ReconcileTransactionResponse> ReconcileTransactionAsync(ReconcileTransactionRequest ReconcileDto);
     }
