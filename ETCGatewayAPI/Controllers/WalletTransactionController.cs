@@ -139,55 +139,63 @@ namespace ETCGatewayAPI.Controllers
             }
         }
 
-        // ৪. Toll Authority-র জন্য Reconcile Endpoint (PartnerTxnId)
         [HttpPost("reconcileToll")]
         public async Task<IActionResult> ReconcileToll([FromBody] ReconcileTransactionRequest request)
         {
-
             if (string.IsNullOrWhiteSpace(request?.PartnerTxnId))
             {
-                var badRequestResponse = new { Message = "PartnerTxnId is required for toll reconciliation." };
-                return BadRequest(badRequestResponse);
+                return BadRequest(new ReconcileTransactionResponse
+                {
+                    HttpCode = 400,
+                    HttpStatus = "Bad Request",
+                    Message = "PartnerTxnId is required for toll reconciliation."
+                });
             }
 
             try
             {
                 request.ReferenceId = null;
-
                 var result = await _walletTransactionService.ReconcileTransactionAsync(request);
-
                 return StatusCode(result.HttpCode, result);
             }
             catch (Exception ex)
             {
-                var errorResponse = new { Success = false, Message = ex.Message };
-                return StatusCode(500, errorResponse);
+                return StatusCode(500, new ReconcileTransactionResponse
+                {
+                    HttpCode = 500,
+                    HttpStatus = "Internal Server Error",
+                    Message = ex.Message
+                });
             }
         }
 
-        // ৫. SBL Channels-এর জন্য Reconcile Endpoint (ReferenceId)
         [HttpPost("reconcileTopUp")]
         public async Task<IActionResult> ReconcileChannel([FromBody] ReconcileTransactionRequest request)
         {
-
             if (string.IsNullOrWhiteSpace(request?.ReferenceId))
             {
-                var badRequestResponse = new { Message = "ReferenceId is required for channel reconciliation." };
-                return BadRequest(badRequestResponse);
+                return BadRequest(new ReconcileTransactionResponse
+                {
+                    HttpCode = 400,
+                    HttpStatus = "Bad Request",
+                    Message = "ReferenceId is required for channel reconciliation."
+                });
             }
 
             try
             {
                 request.PartnerTxnId = null;
-
                 var result = await _walletTransactionService.ReconcileTransactionAsync(request);
-
                 return StatusCode(result.HttpCode, result);
             }
             catch (Exception ex)
             {
-                var errorResponse = new { Success = false, Message = ex.Message };
-                return StatusCode(500, errorResponse);
+                return StatusCode(500, new ReconcileTransactionResponse
+                {
+                    HttpCode = 500,
+                    HttpStatus = "Internal Server Error",
+                    Message = ex.Message
+                });
             }
         }
     }

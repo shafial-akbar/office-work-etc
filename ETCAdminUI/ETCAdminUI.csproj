@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Etc.Shared\Etc.Shared.csproj" />
+    <ProjectReference Include="..\ETCGatewayAPI\ETCGatewayAPI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

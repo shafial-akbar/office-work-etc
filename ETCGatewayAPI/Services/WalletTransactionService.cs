@@ -972,15 +972,18 @@ namespace ETCGatewayAPI.Services
                 return errorResponse;
             }
         }
-        #region
+        #endregion
 
         // ৩. ট্রানজেকশন রিকনসিলিয়েশন (Reconciliation & Idempotency Audit)
         public async Task<ReconcileTransactionResponse> ReconcileTransactionAsync(ReconcileTransactionRequest request)
         {
             var requestTime = DateTime.UtcNow;
 
-            // ১. প্রাথমিক ভ্যালিডেশন
-            if (string.IsNullOrWhiteSpace(request.PartnerTxnId) && string.IsNullOrWhiteSpace(request.ReferenceId))
+            // ১. প্রাথমিক ভ্যালিডেশন ও স্পেস ক্লিনিং
+            string? partnerTxnId = request.PartnerTxnId?.Trim();
+            string? referenceId = request.ReferenceId?.Trim();
+
+            if (string.IsNullOrWhiteSpace(partnerTxnId) && string.IsNullOrWhiteSpace(referenceId))
             {
                 var badRequestResponse = new ReconcileTransactionResponse
                 {
@@ -1001,35 +1004,64 @@ namespace ETCGatewayAPI.Services
                 return badRequestResponse;
             }
 
-            // কোন আইডি দিয়ে সার্চ হবে তা নির্ধারণ
-            bool isTollRequest = !string.IsNullOrWhiteSpace(request.PartnerTxnId);
-            string searchTxnId = isTollRequest ? request.PartnerTxnId! : request.ReferenceId!;
+            bool isTollRequest = !string.IsNullOrWhiteSpace(partnerTxnId);
+            string searchTxnId = isTollRequest ? partnerTxnId! : referenceId!;
 
             try
             {
-                // ২. Primary Check: DoTransactions টেবিলে সফল/প্রসেসড রেকর্ড খোঁজা
-                var transaction = await _context.DoTransactions
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(t => isTollRequest ? t.PartnerTxnId == searchTxnId : t.RefNo1 == searchTxnId);
+                // ২. Primary Check: DoTransactions টেবিলে সফল/প্রসেসড রেকর্ড খোঁজা (Index-Friendly আলাদা কুয়েরি)
+                DoTransaction? transaction = null;
 
-                // Case 1: ডাটাবেজে সফলভাবে এক্সিকিউট ও সেভ হয়েছিল (Response Lost / Drop Case)
+                if (isTollRequest)
+                {
+                    transaction = await _context.DoTransactions
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(t => t.PartnerTxnId == searchTxnId && t.TranMode == TranMode.Debit);
+                }
+                else
+                {
+                    transaction = await _context.DoTransactions
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(t => t.RefNo1 == searchTxnId
+                                               && t.TranMode == TranMode.Credit
+                                               && string.IsNullOrEmpty(t.OriginalBankTxnId));
+                }
+
+                // Case 1: ডাটাবেজে সফলভাবে এক্সিকিউট ও সেভ হয়েছিল
                 if (transaction != null)
                 {
+                    string reconStatus;
+                    string statusMessage;
+
+                    if (transaction.TranStatus == TranStatus.Success)
+                    {
+                        reconStatus = ReconStatus.Success;
+                        statusMessage = "Transaction executed successfully.";
+                    }
+                    else if (transaction.TranStatus == TranStatus.Reversed)
+                    {
+                        reconStatus = ReconStatus.Failed;
+                        statusMessage = "Transaction was reversed/refunded.";
+                    }
+                    else
+                    {
+                        reconStatus = ReconStatus.Failed;
+                        statusMessage = $"Transaction ended with status: {transaction.TranStatus}.";
+                    }
+
                     var successReconResponse = new ReconcileTransactionResponse
                     {
                         HttpCode = 200,
                         HttpStatus = "OK",
-                        Message = "Transaction record found in primary database.",
+                        Message = statusMessage,
                         Body = new ReconcileResultBody
                         {
-                            PartnerTxnId = transaction.PartnerTxnId,
-                            ReferenceId = transaction.RefNo1 ?? string.Empty,
-                            WalletNo = transaction.PartnerId,
-                            PartnerId = transaction.PartnerId,
+                            PartnerTxnId = transaction.PartnerTxnId ?? string.Empty,
+                            ReferenceId = isTollRequest ? string.Empty : (transaction.RefNo1 ?? string.Empty),
+                            WalletNo = transaction.PartnerId ?? string.Empty,
+                            PartnerId = transaction.PartnerId ?? string.Empty,
                             BankTxnId = transaction.BankTxnId,
-                            ReconStatus = transaction.TranStatus == TranStatus.Success
-                                ? ReconStatus.Success
-                                : ReconStatus.Failed,
+                            ReconStatus = reconStatus,
                             TransactionAmount = transaction.TransactionAmount,
                             SourceAccountNo = transaction.SourceAccountNo,
                             TranMode = transaction.TranMode,
@@ -1050,26 +1082,28 @@ namespace ETCGatewayAPI.Services
                     return successReconResponse;
                 }
 
-                // ৩. Secondary Check: TransactionLogs টেবিলে টেকনিক্যাল ফেলিউর রেকর্ড চেক
-                // 👈 Reconcile রিকোয়েস্টের নিজেদের লগ বাদ দিয়ে শুধু মূল ট্রানজেকশনের ফেল্ড লগ খোঁজা
+                // ৩. Secondary Check: TransactionLogs টেবিলে ব্যর্থ ট্রানজেকশন রেকর্ড খোঁজা
+                // টোল ও টপ-আপ উভয়ের আইডেন্টিফায়ারই TransactionLogs টেবিলে PartnerTxnId-তে সংরক্ষিত থাকে
                 var failedLog = await _context.TransactionLogs
                     .AsNoTracking()
                     .Where(l => l.RequestType != TranLogRequestType.Reconcile && l.PartnerTxnId == searchTxnId)
                     .OrderByDescending(l => l.RequestTimestamp)
                     .FirstOrDefaultAsync();
 
-                // Case 2: রিকোয়েস্ট API-তে এসেছিল কিন্তু ভ্যালিডেশন/ডাটাবেজ এররে ফেল করেছিল
+                // Case 2: রিকোয়েস্ট এসেছিল কিন্তু ভ্যালিডেশন বা সিস্টেম এররে ফেইল করেছিল
                 if (failedLog != null)
                 {
                     var failedReconResponse = new ReconcileTransactionResponse
                     {
                         HttpCode = 200,
                         HttpStatus = "OK",
-                        Message = "Transaction attempted but failed during execution.",
+                        Message = !string.IsNullOrWhiteSpace(failedLog.ResponseMessage)
+                            ? failedLog.ResponseMessage
+                            : "Transaction attempted but failed during execution.",
                         Body = new ReconcileResultBody
                         {
-                            PartnerTxnId = request.PartnerTxnId ?? failedLog.PartnerTxnId ?? string.Empty,
-                            ReferenceId = request.ReferenceId ?? string.Empty,
+                            PartnerTxnId = isTollRequest ? searchTxnId : string.Empty,
+                            ReferenceId = !isTollRequest ? searchTxnId : string.Empty,
                             WalletNo = failedLog.PartnerId ?? string.Empty,
                             PartnerId = failedLog.PartnerId ?? string.Empty,
                             BankTxnId = failedLog.SblTxnId ?? string.Empty,
@@ -1094,7 +1128,7 @@ namespace ETCGatewayAPI.Services
                     return failedReconResponse;
                 }
 
-                // Case 3: রিকোয়েস্ট API পর্যন্ত পৌঁছায়নি (Not Found)
+                // Case 3: রিকোয়েস্ট সিস্টেমে কখনই আসেনি (Not Found)
                 var notFoundResponse = new ReconcileTransactionResponse
                 {
                     HttpCode = 404,
@@ -1102,8 +1136,8 @@ namespace ETCGatewayAPI.Services
                     Message = "No transaction record found with the provided identifier.",
                     Body = new ReconcileResultBody
                     {
-                        PartnerTxnId = request.PartnerTxnId ?? string.Empty,
-                        ReferenceId = request.ReferenceId ?? string.Empty,
+                        PartnerTxnId = isTollRequest ? searchTxnId : string.Empty,
+                        ReferenceId = !isTollRequest ? searchTxnId : string.Empty,
                         WalletNo = string.Empty,
                         PartnerId = string.Empty,
                         BankTxnId = string.Empty,
@@ -1137,7 +1171,6 @@ namespace ETCGatewayAPI.Services
                     Message = "An error occurred while handling the reconciliation request."
                 };
 
-                // 👈 catch ব্লকেও অডিট লগ সেভ নিশ্চিত করা হলো
                 await SaveTransactionLogAsync(
                     reconcileRequest: request,
                     reconcileResponse: errorResponse,

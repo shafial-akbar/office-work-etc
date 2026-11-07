@@ -1,0 +1,279 @@
+﻿@model Etc.Shared.DTOs.ReportResponse
+@using Etc.Shared.Constants
+@using Etc.Shared.DTOs
+
+@using Etc.Shared.Constants
+@using Etc.Shared.Helpers
+
+@{
+    ViewData["Title"] = "Transaction & Settlement Reports";
+    var filter = ViewBag.Filter as ReportRequest ?? new ReportRequest();
+    string fromDateVal = filter.FromDate != default ? filter.FromDate.ToString("yyyy-MM-dd") : DateTime.Today.ToString("yyyy-MM-dd");
+    string toDateVal = filter.ToDate != default ? filter.ToDate.ToString("yyyy-MM-dd") : DateTime.Today.ToString("yyyy-MM-dd");
+}
+
+<div class="container-fluid px-4 py-3">
+    <!-- পেজ হেডার -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="fw-bold text-dark mb-0">ETC Audit & Transaction Reports</h3>
+            <span class="text-muted small">Reconciliation, Settlement and Transaction Audit Ledger</span>
+        </div>
+        <div>
+            <a asp-action="MasterBalance" class="btn btn-outline-primary btn-sm me-2">
+                <i class="bi bi-wallet2"></i> Master Balance Summary
+            </a>
+        </div>
+    </div>
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i> @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <!-- ফিল্টার ও সার্চ প্যানেল -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-semibold text-secondary"><i class="bi bi-funnel me-1"></i> Filter Transactions</h6>
+        </div>
+        <div class="card-body">
+            <form id="filterForm" method="get" asp-action="Index">
+                <div class="row g-3">
+                    <!-- From Date (Calendar Picker) -->
+                    <div class="col-md-2 col-sm-6">
+                        <label class="form-label small fw-semibold text-muted">From Date</label>
+                        <input type="date" name="FromDate" class="form-control form-control-sm" value="@fromDateVal" required />
+                    </div>
+
+                    <!-- To Date (Calendar Picker) -->
+                    <div class="col-md-2 col-sm-6">
+                        <label class="form-label small fw-semibold text-muted">To Date</label>
+                        <input type="date" name="ToDate" class="form-control form-control-sm" value="@toDateVal" required />
+                    </div>
+
+                    <!-- Purpose Dropdown -->
+                    <div class="col-md-2 col-sm-6">
+                        <label class="form-label small fw-semibold text-muted">Report Purpose</label>
+                        <select name="Purpose" class="form-select form-select-sm"
+                                asp-items="@ConstantsDropdownHelper.GetSelectList(typeof(ReportType), filter.Purpose)">
+                            <option value="">All Transactions</option>
+                        </select>
+                    </div>
+
+                    <!-- Tran Mode Dropdown -->
+                    <div class="col-md-2 col-sm-6">
+                        <label class="form-label small fw-semibold text-muted">Transaction Mode</label>
+                        <select name="TranMode" class="form-select form-select-sm"
+                                asp-items="@ConstantsDropdownHelper.GetSelectList(typeof(TranMode), filter.TranMode)">
+                            <option value="">All Modes</option>
+                        </select>
+                    </div>
+
+                    <!-- Source Channel Dropdown -->
+                    <div class="col-md-2 col-sm-6">
+                        <label class="form-label small fw-semibold text-muted">Source Channel</label>
+                        <select name="SourceChannel" class="form-select form-select-sm"
+                            asp-items="@ConstantsDropdownHelper.GetSelectList(typeof(SourceChannel), filter.SourceChannel)">
+                            <option value="">All Channels</option>
+                        </select>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="col-md-2 col-sm-12 d-flex align-items-end gap-2">
+                        <button type="submit" class="btn btn-primary btn-sm flex-fill">
+                            <i class="bi bi-search"></i> Filter
+                        </button>
+                        <a asp-action="Index" class="btn btn-outline-secondary btn-sm" title="Reset Filters">
+                            <i class="bi bi-arrow-counterclockwise"></i> Reset
+                        </a>
+                        <button type="button" id="btnExportCsv" class="btn btn-success btn-sm" title="Export to CSV">
+                            <i class="bi bi-file-earmark-excel"></i> CSV
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- সামারি মেট্রিক কার্ডস -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3 col-sm-6">
+            <div class="card border-0 shadow-sm bg-white p-3 border-start border-primary border-4">
+                <span class="text-muted small fw-semibold">TOTAL VOLUME</span>
+                <h4 class="fw-bold mb-0 text-primary mt-1">@Model.Summary.TotalTransactions.ToString("N0")</h4>
+                <span class="text-muted" style="font-size: 0.75rem;">Transactions Found</span>
+            </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6">
+            <div class="card border-0 shadow-sm bg-white p-3 border-start border-success border-4">
+                <span class="text-muted small fw-semibold">TOTAL AMOUNT</span>
+                <h4 class="fw-bold mb-0 text-success mt-1">৳ @Model.Summary.TotalAmount.ToString("N2")</h4>
+                <span class="text-muted" style="font-size: 0.75rem;">Aggregated Batch Sum</span>
+            </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6">
+            <div class="card border-0 shadow-sm bg-white p-3 border-start border-info border-4">
+                <span class="text-muted small fw-semibold">ACTIVE FILTER MODE</span>
+                <h5 class="fw-bold mb-0 text-dark mt-1">@Model.Summary.FilteredTranMode</h5>
+                <span class="text-muted" style="font-size: 0.75rem;">Selected Tran Mode</span>
+            </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6">
+            <div class="card border-0 shadow-sm bg-white p-3 border-start border-secondary border-4">
+                <span class="text-muted small fw-semibold">DATE TIMEFRAME</span>
+                <h6 class="fw-bold mb-0 text-dark mt-2" style="font-size: 0.85rem;">
+                    @fromDateVal <span class="text-muted">to</span> @toDateVal
+                </h6>
+                <span class="text-muted" style="font-size: 0.75rem;">Audit Query Window</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- রিপোর্ট ডাটা টেবিল ও পেজিনেশন -->
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-semibold text-dark">Transaction Ledger Records</h6>
+            <span class="badge bg-light text-dark border">Showing @Model.Details.Count Records</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive p-3">
+                <table id="reportDataTable" class="table table-hover table-striped align-middle w-100" style="font-size: 0.85rem;">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>#</th>
+                            <th>Bank Txn ID</th>
+                            <th>Date & Time</th>
+                            <th>Mode</th>
+                            <th>Amount</th>
+                            <th>Source / Wallet</th>
+                            <th>Vehicle / Ref</th>
+                            <th>Channel</th>
+                            <th>Tran Status</th>
+                            <th>Settlement</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.Details != null && Model.Details.Any())
+                        {
+                            int sl = 1;
+                            foreach (var item in Model.Details)
+                            {
+                                <tr>
+                                    <td>@(sl++)</td>
+                                    <td>
+                                        <span class="font-monospace fw-semibold">@item.BankTxnId</span>
+                                    </td>
+                                    <td>@item.BankTxnDate.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                    <td>
+                                        @if (item.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span class="badge bg-danger-subtle text-danger border border-danger">Debit</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-success-subtle text-success border border-success">Credit</span>
+                                        }
+                                    </td>
+                                    <td class="fw-bold text-end">৳ @item.TransactionAmount.ToString("N2")</td>
+                                    <td>
+                                        @if (!string.IsNullOrWhiteSpace(item.PartnerId))
+                                        {
+                                            <span class="badge bg-light text-dark border">@item.PartnerId</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">@item.SourceAccountNo</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrWhiteSpace(item.RefNo1))
+                                        {
+                                            <span class="text-truncate d-inline-block" style="max-width: 160px;" title="@item.RefNo1">
+                                                @item.RefNo1
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary-subtle text-dark">@(string.IsNullOrEmpty(item.SourceChannel) ? "ETC" : item.SourceChannel)</span>
+                                    </td>
+                                    <td>
+                                        @if (item.TranStatus == TranStatus.Success)
+                                        {
+                                            <span class="badge bg-success">Success</span>
+                                        }
+                                        else if (item.TranStatus == TranStatus.Reversed)
+                                        {
+                                            <span class="badge bg-warning text-dark">Reversed</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">@item.TranStatus</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (item.SettlStatus == SettlementStatus.Settled)
+                                        {
+                                            <span class="badge bg-info text-dark">Settled</span>
+                                        }
+                                        else if (item.SettlStatus == SettlementStatus.Processing)
+                                        {
+                                            <span class="badge bg-primary">Processing</span>
+                                        }
+                                        else if (item.SettlStatus == SettlementStatus.Reversed)
+                                        {
+                                            <span class="badge bg-warning text-dark">Reversed</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-light text-secondary border">Pending</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <!-- DataTables CSS & JS (Bootstrap 5) পেজিনেশন এবং লাইভ সার্চের জন্য -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" />
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+    <script>
+        $(document).ready(function () {
+            // ১. DataTables পেজিনেশন ও ইনস্ট্যান্ট সার্চ চালু করা
+            $('#reportDataTable').DataTable({
+                "pageLength": 15,
+                "lengthMenu": [[10, 15, 25, 50, 100, -1], [10, 15, 25, 50, 100, "All"]],
+                "order": [[2, "desc"]], // ব্যাংক ট্রানজেকশন ডেট অনুযায়ী ডিসেন্ডিং
+                "language": {
+                    "search": "_INPUT_",
+                    "searchPlaceholder": "Quick search in table...",
+                    "emptyTable": "No transactions found matching the filter criteria."
+                }
+            });
+
+            // ২. CSV ডাউনলোড বাটন হ্যান্ডলার (বর্তমান ফিল্টারগুলো সহ ExportCsv মেথডে রিডাইরেক্ট করবে)
+            $('#btnExportCsv').on('click', function () {
+                var form = $('#filterForm');
+                var exportUrl = '@Url.Action("ExportCsv", "Report")' + '?' + form.serialize();
+                window.location.href = exportUrl;
+            });
+        });
+    </script>
+}

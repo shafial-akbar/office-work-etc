@@ -1,0 +1,247 @@
+﻿@model Etc.Shared.DTOs.ReconcileTransactionResponse
+@using Etc.Shared.Constants
+
+@{
+    ViewData["Title"] = "Transaction Reconciliation";
+    string currentType = ViewBag.SearchType as string ?? "Toll";
+    string currentValue = ViewBag.SearchValue as string ?? "";
+}
+
+<div class="container-fluid px-4 py-3">
+    <!-- পেজ হেডার -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="fw-bold text-dark mb-0">Single Transaction Reconciliation</h3>
+            <span class="text-muted small">Verify Toll Authority (PartnerTxnId) or SBL Channel (ReferenceId) transaction status</span>
+        </div>
+        <div>
+            <a asp-action="Index" class="btn btn-outline-secondary btn-sm me-2">
+                <i class="bi bi-table"></i> All Reports
+            </a>
+            <a asp-action="MasterBalance" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-wallet2"></i> Master Balance
+            </a>
+        </div>
+    </div>
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-octagon-fill me-2"></i> @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <!-- সার্চ প্যানেল -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-semibold text-secondary">
+                <i class="bi bi-search me-1"></i> Search Reconciliation Record
+            </h6>
+        </div>
+        <div class="card-body">
+            <form method="get" asp-action="Reconcile" class="row g-3">
+                <!-- Authority Type Selector -->
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold text-muted">Authority / Channel Type</label>
+                    <select id="searchTypeSelect" name="searchType" class="form-select form-select-sm">
+                        <option value="Toll" selected="@(currentType == "Toll")">Toll Authority (Partner Txn ID)</option>
+                        <option value="SBL" selected="@(currentType == "SBL")">SBL Channels (Reference ID)</option>
+                    </select>
+                </div>
+
+                <!-- Search Input Field -->
+                <div class="col-md-7">
+                    <label id="inputLabel" class="form-label small fw-semibold text-muted">Transaction Identifier</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-light text-muted">
+                            <i class="bi bi-hash"></i>
+                        </span>
+                        <input type="text" id="searchValueInput" name="searchValue" class="form-control"
+                               value="@currentValue" required autofocus />
+                    </div>
+                </div>
+
+                <!-- Submit & Clear Buttons -->
+                <div class="col-md-2 d-flex align-items-end gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm flex-fill">
+                        <i class="bi bi-search"></i> Reconcile
+                    </button>
+                    <a asp-action="Reconcile" class="btn btn-outline-secondary btn-sm" title="Clear Search">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ফলাফল সেকশন -->
+    @if (Model != null)
+    {
+        var body = Model.Body;
+        bool isSuccess = Model.HttpCode == 200 && body?.ReconStatus == ReconStatus.Success;
+        bool isExecutionFailed = Model.HttpCode == 200 && body?.ReconStatus == ReconStatus.Failed;
+        bool isNotFound = Model.HttpCode == 404;
+
+        <div class="card shadow-sm border-0 mb-4">
+            <!-- হেডার ও স্ট্যাটাস ব্যানার -->
+            <div class="card-header py-3 d-flex justify-content-between align-items-center @(isSuccess ? "bg-success text-white" : isExecutionFailed ? "bg-warning text-dark" : "bg-danger text-white")">
+                <div class="d-flex align-items-center gap-2">
+                    @if (isSuccess)
+                    {
+                        <i class="bi bi-check-circle-fill fs-5"></i>
+                        <span class="fw-bold">RECONCILIATION SUCCESSFUL - TRANSACTION FOUND</span>
+                    }
+                    else if (isExecutionFailed)
+                    {
+                        <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                        <span class="fw-bold">TRANSACTION ATTEMPTED BUT FAILED / REVERSED</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-x-circle-fill fs-5"></i>
+                        <span class="fw-bold">NO RECORD FOUND (404 NOT FOUND)</span>
+                    }
+                </div>
+                <div>
+                    <span class="badge @(isSuccess ? "bg-white text-success" : isExecutionFailed ? "bg-dark text-white" : "bg-white text-danger") fs-6 px-3">
+                        HTTP @Model.HttpCode : @Model.HttpStatus
+                    </span>
+                </div>
+            </div>
+
+            <div class="card-body p-4">
+                <div class="alert @(isSuccess ? "alert-success" : isExecutionFailed ? "alert-warning" : "alert-danger") d-flex align-items-center mb-4">
+                    <div>
+                        <strong>System Message:</strong> @Model.Message
+                    </div>
+                </div>
+
+                @if (body != null)
+                {
+                    <div class="row g-3">
+                        <!-- বাম পাশ: ট্রানজেকশন কোর ডাটা -->
+                        <div class="col-md-6">
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-sm mb-0">
+                                    <tbody>
+                                        <tr>
+                                            <th class="bg-light text-muted w-40">Recon Status</th>
+                                            <td>
+                                                @if (body.ReconStatus == ReconStatus.Success)
+                                                {
+                                                    <span class="badge bg-success">Success</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-danger">Failed</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th class="bg-light text-muted">Bank Txn ID</th>
+                                            <td>
+                                                <span class="font-monospace fw-bold text-primary">
+                                                    @(string.IsNullOrEmpty(body.BankTxnId) ? "-" : body.BankTxnId)
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th class="bg-light text-muted">Transaction Amount</th>
+                                            <td>
+                                                <span class="fw-bold fs-6 text-dark">
+                                                    ৳ @body.TransactionAmount.ToString("N2")
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th class="bg-light text-muted">Tran Mode</th>
+                                            <td>
+                                                @if (body.TranMode == TranMode.Debit)
+                                                {
+                                                    <span class="badge bg-danger-subtle text-danger border border-danger">Debit (Toll Deduction)</span>
+                                                }
+                                                else if (body.TranMode == TranMode.Credit)
+                                                {
+                                                    <span class="badge bg-success-subtle text-success border border-success">Credit (Top-Up)</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">@(string.IsNullOrEmpty(body.TranMode) ? "-" : body.TranMode)</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- ডান পাশ: পার্টি ও রেফারেন্স ডাটা -->
+                        <div class="col-md-6">
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-sm mb-0">
+                                    <tbody>
+                                        <tr>
+                                            <th class="bg-light text-muted w-40">Toll Partner Txn ID</th>
+                                            <td class="font-monospace">
+                                                @(string.IsNullOrEmpty(body.PartnerTxnId) ? "-" : body.PartnerTxnId)
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th class="bg-light text-muted">SBL Channel Ref ID</th>
+                                            <td class="font-monospace">
+                                                @(string.IsNullOrEmpty(body.ReferenceId) ? "-" : body.ReferenceId)
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th class="bg-light text-muted">Wallet / Partner ID</th>
+                                            <td>
+                                                @(string.IsNullOrEmpty(body.WalletNo) ? "-" : body.WalletNo)
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th class="bg-light text-muted">Source Account No</th>
+                                            <td>
+                                                @(string.IsNullOrEmpty(body.SourceAccountNo) ? "-" : body.SourceAccountNo)
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th class="bg-light text-muted">Transaction Date</th>
+                                            <td>
+                                                @(body.TransactionDate.HasValue ? body.TransactionDate.Value.ToString("yyyy-MM-dd HH:mm:ss") : "-")
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            function updateInputContext() {
+                var selected = $('#searchTypeSelect').val();
+                if (selected === 'Toll') {
+                    $('#inputLabel').text('Toll Partner Transaction ID (PartnerTxnId)');
+                    $('#searchValueInput').attr('placeholder', 'e.g. TXN-20260905-998466');
+                } else {
+                    $('#inputLabel').text('SBL Channel Reference ID (ReferenceId)');
+                    $('#searchValueInput').attr('placeholder', 'e.g. REF-20260905-001');
+                }
+            }
+
+            // ড্রপডাউন পরিবর্তন হলে ইনপুট প্লেসহোল্ডার ও লেবেল আপডেট করা
+            $('#searchTypeSelect').on('change', function () {
+                updateInputContext();
+            });
+
+            updateInputContext();
+        });
+    </script>
+}

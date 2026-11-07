@@ -1,10 +1,5 @@
-﻿using Etc.Shared.Constants;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Etc.Shared.DTOs
 {
@@ -12,9 +7,9 @@ namespace Etc.Shared.DTOs
     {
         public DateTime FromDate { get; set; }
         public DateTime ToDate { get; set; }
-        public string? Purpose { get; set; } // Reconciliation , Settlement (Optional filter)
-        public string? TranMode { get; set; } // "Debit" or "Credit" (Optional filter)
-        public string? SourceChannel { get; set; } // "SPG", "Counter", "Wallet", "Esheba" (Optional - Only for Credit Mode)
+        public string? Purpose { get; set; }       // Transaction, Reconciliation, Settlement, Reversal
+        public string? TranMode { get; set; }      // Debit or Credit
+        public string? SourceChannel { get; set; } // SPG, Counter, Wallet, Esheba
     }
 
     public class ReportResponse
@@ -44,23 +39,23 @@ namespace Etc.Shared.DTOs
         public string TranStatus { get; set; } = string.Empty;
         public string SettlStatus { get; set; } = string.Empty;
 
-        // Credit Mode Fields
-        public string? PartnerId { get; set; }
-        public string? PartnerTxnId { get; set; }
+        // Toll (Debit) Fields
+        public string? PartnerId { get; set; }     // Wallet No
+        public string? PartnerTxnId { get; set; }  // Authority Txn Id
 
-        // Debit Mode Fields
-        public string? RefNo1 { get; set; }
+        // Common / Top-Up (Credit) Fields
+        public string? RefNo1 { get; set; }        // Debit হলে Vehicle Reg No, Credit হলে Channel Ref No
         public DateTime? ChannelTransactionDate { get; set; }
     }
 
     public class MasterBalanceSummaryResponse
     {
-        public decimal OpeningBalance { get; set; }           // FromDate-এর আগের ব্যালেন্স
-        public decimal TotalTopUpAmount { get; set; }         // নির্দিষ্ট মেয়াদের মোট টপ-আপ
-        public decimal GrossTollAmount { get; set; }          // নির্দিষ্ট মেয়াদের মোট ডেবিট টোল
-        public decimal ReversedTollAmount { get; set; }       // নির্দিষ্ট মেয়াদের মোট রিভার্সড টোল
-        public decimal NetTollAmount { get; set; }            // GrossToll - ReversedToll
-        public decimal ClosingBalance { get; set; }           // OpeningBalance + TopUp - NetToll (Total Virtual Master Balance)
+        public decimal OpeningBalance { get; set; }     // FromDate-এর পূর্ববর্তী মাস্টার ব্যালেন্স
+        public decimal TotalTopUpAmount { get; set; }   // নির্ধারিত মেয়াদের প্রকৃত টপ-আপ (রিফান্ড বাদে)
+        public decimal GrossTollAmount { get; set; }    // নির্ধারিত মেয়াদের মোট টোল কালেকশন চেষ্টা (Success + Reversed)
+        public decimal ReversedTollAmount { get; set; } // নির্ধারিত মেয়াদের রিভার্সড টোল
+        public decimal NetTollAmount { get; set; }      // GrossToll - ReversedToll
+        public decimal ClosingBalance { get; set; }     // OpeningBalance + TotalTopUp - NetToll
 
         public DateTime? FromDate { get; set; }
         public DateTime ToDate { get; set; }

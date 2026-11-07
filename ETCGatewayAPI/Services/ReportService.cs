@@ -5,9 +5,7 @@ using ETCGatewayAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Etc.Shared.Constants;
 using Microsoft.AspNetCore.Http;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Etc.Shared.Helpers;
 
 namespace ETCGatewayAPI.Services
 {
@@ -18,8 +16,8 @@ namespace ETCGatewayAPI.Services
         private readonly ILogger<ReportService> _logger;
 
         public ReportService(DatabaseContext context,
-                               IHttpContextAccessor httpContextAccessor,
-                               ILogger<ReportService> logger)
+                             IHttpContextAccessor httpContextAccessor,
+                             ILogger<ReportService> logger)
         {
             _context = context;
             _httpContextAccessor = httpContextAccessor;
@@ -30,23 +28,26 @@ namespace ETCGatewayAPI.Services
         {
             try
             {
-                // ১. তারিখের Boundary সেট করা (ToDate এর একদম শেষ মুহূর্ত ২৩:৫৯:৫৯ পর্যন্ত কভার করার জন্য)
+                // ১. ইনডেক্স-বান্ধব Half-open Interval [FromDate, ToDateExclusive)
                 var fromDate = request.FromDate.Date;
-                var toDate = request.ToDate.Date.AddDays(1).AddTicks(-1);
+                var toDateExclusive = request.ToDate.Date.AddDays(1);
 
                 var query = _context.DoTransactions.AsNoTracking();
 
-                // ২. Purpose / ReportType ফিল্টারিং লজিক
+                // ২. Date Range ফিল্টার
+                query = query.Where(t => t.BankTxnDate >= fromDate && t.BankTxnDate < toDateExclusive);
+
+                // ৩. Purpose / ReportType ফিল্টারিং লজিক
                 if (!string.IsNullOrWhiteSpace(request.Purpose) &&
                     request.Purpose.Equals(ReportType.Settlement, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Settlement Report: শুধুমাত্র EOD Batch সম্পূর্ণ হওয়া Settled ট্রানজেকশন
+                    // Settlement Report: শুধুমাত্র সম্পূর্ণ হওয়া Settled ট্রানজেকশন
                     query = query.Where(t => t.SettlStatus == SettlementStatus.Settled);
                 }
                 else if (!string.IsNullOrWhiteSpace(request.Purpose) &&
                          request.Purpose.Equals(ReportType.Reconciliation, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Reconciliation Report: Success এবং Reversed উভয় ট্রানজেকশন (Toll Authority & Top-up Channels)
+                    // Reconciliation Report: Success এবং Reversed উভয় ট্রানজেকশন
                     query = query.Where(t => t.TranStatus == TranStatus.Success || t.TranStatus == TranStatus.Reversed);
                 }
                 else if (!string.IsNullOrWhiteSpace(request.Purpose) &&
@@ -57,29 +58,31 @@ namespace ETCGatewayAPI.Services
                 }
                 else
                 {
-                    // Transaction / Default Report: শুধুমাত্র Active Success ট্রানজেকশন (Reversed বাদে)
+                    // Transaction / Default Report: শুধুমাত্র Active Success ট্রানজেকশন
                     query = query.Where(t => t.TranStatus == TranStatus.Success);
                 }
-
-                // ৩. Date Range ফিল্টার
-                query = query.Where(t => t.BankTxnDate >= fromDate && t.BankTxnDate <= toDate);
 
                 // ৪. TranMode ফিল্টার (Debit/Credit)
                 if (!string.IsNullOrWhiteSpace(request.TranMode))
                 {
                     query = query.Where(t => t.TranMode.Equals(request.TranMode, StringComparison.OrdinalIgnoreCase));
+
+                    // ক্রেডিট মোড ফিল্টার করা থাকলে ইন-হাউস রিফান্ড এন্ট্রি (_REV) বাদ রাখা (যদি না Reversal রিপোর্ট চাওয়া হয়)
+                    if (request.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase) &&
+                        (string.IsNullOrWhiteSpace(request.Purpose) || !request.Purpose.Equals(ReportType.Reversal, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        query = query.Where(t => string.IsNullOrEmpty(t.OriginalBankTxnId) &&
+                                                 (t.PartnerTxnId == null || !t.PartnerTxnId.EndsWith("_REV")));
+                    }
                 }
 
-                // ৫. SourceChannel ফিল্টার: শুধুমাত্র Credit Mode এর জন্য এবং যদি রিকোয়েস্টে পাঠানো হয়
-                bool isCreditMode = !string.IsNullOrWhiteSpace(request.TranMode) &&
-                                    request.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase);
-
-                if (isCreditMode && !string.IsNullOrWhiteSpace(request.SourceChannel))
+                // ৫. SourceChannel ফিল্টার
+                if (!string.IsNullOrWhiteSpace(request.SourceChannel))
                 {
                     query = query.Where(t => t.SourceChannel.Equals(request.SourceChannel, StringComparison.OrdinalIgnoreCase));
                 }
 
-                // ৬. LINQ to Entities প্রজেকশন
+                // ৬. প্রজেকশন (RefNo1 গাড়ির নম্বর অক্ষুণ্ণ রাখা হয়েছে)
                 var details = await query
                     .OrderByDescending(t => t.BankTxnDate)
                     .Select(t => new ReportDetailDto
@@ -94,17 +97,17 @@ namespace ETCGatewayAPI.Services
                         TranStatus = t.TranStatus,
                         SettlStatus = t.SettlStatus,
 
-                        // Debit Mode ফিল্ডস (Partner Information)
+                        // Toll Debit Fields
                         PartnerId = t.TranMode == TranMode.Debit ? t.PartnerId : null,
                         PartnerTxnId = t.TranMode == TranMode.Debit ? t.PartnerTxnId : null,
 
-                        // Credit Mode ফিল্ডস (Channel Ref Information)
-                        RefNo1 = t.TranMode == TranMode.Credit ? t.RefNo1 : null,
+                        // Common / Channel Fields (RefNo1 ডেবিটে গাড়ির নম্বর এবং ক্রেডিটে চ্যানেল রেফারেন্স বহন করে)
+                        RefNo1 = t.RefNo1,
                         ChannelTransactionDate = t.TranMode == TranMode.Credit ? t.ChannelTransactionDate : null
                     })
                     .ToListAsync();
 
-                // ৭. Summary হিসাব করা
+                // ৭. Summary হিসাব
                 var summary = new ReportSummaryDto
                 {
                     TotalTransactions = details.Count,
@@ -132,64 +135,75 @@ namespace ETCGatewayAPI.Services
         {
             try
             {
-                // ১. তারিখগুলো নির্ধারণ করা
-                // যদি FromDate না থাকে কিন্তু AsOfDate দেওয়া হয়, তবে ToDate হবে AsOfDate
+                // ১. তারিখ রেঞ্জ নির্ধারণ
                 DateTime effectiveToDate = (toDate ?? asOfDate ?? DateTime.UtcNow).Date;
+                DateTime toDateExclusive = effectiveToDate.AddDays(1);
                 DateTime? effectiveFromDate = fromDate?.Date;
 
                 decimal openingBalance = 0m;
 
-                // ২. Opening Balance বের করা (যদি FromDate পাঠানো হয়)
+                // ২. Opening Balance গণনা (FromDate-এর পূর্ববর্তী সময়ের ব্যালেন্স)
                 if (effectiveFromDate.HasValue)
                 {
+                    DateTime fromBoundary = effectiveFromDate.Value;
+
                     var openingSummary = await _context.DoTransactions
-                        .Where(t => t.BankTxnDate.Date < effectiveFromDate.Value)
+                        .Where(t => t.BankTxnDate < fromBoundary)
                         .GroupBy(t => 1)
                         .Select(g => new
                         {
+                            // প্রকৃত টপ-আপ (রিফান্ড ক্রেডিট বাদ দিয়ে)
                             TopUp = g.Sum(x => x.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase)
-                                                   && x.TranStatus == TranStatus.Success ? x.TransactionAmount : 0m),
+                                            && x.TranStatus == TranStatus.Success
+                                            && string.IsNullOrEmpty(x.OriginalBankTxnId)
+                                            && (x.PartnerTxnId == null || !x.PartnerTxnId.EndsWith("_REV")) ? x.TransactionAmount : 0m),
 
+                            // মোট টোল কালেকশন চেষ্টা (Success + Reversed)
                             GrossToll = g.Sum(x => x.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase)
-                                                  && x.TranStatus == TranStatus.Success ? x.TransactionAmount : 0m),
+                                                && (x.TranStatus == TranStatus.Success || x.TranStatus == TranStatus.Reversed) ? x.TransactionAmount : 0m),
 
+                            // বাতিল হওয়া টোল
                             ReversedToll = g.Sum(x => x.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase)
-                                                     && x.TranStatus == TranStatus.Reversed ? x.TransactionAmount : 0m)
+                                                   && x.TranStatus == TranStatus.Reversed ? x.TransactionAmount : 0m)
                         })
                         .FirstOrDefaultAsync();
 
                     if (openingSummary != null)
                     {
-                        openingBalance = openingSummary.TopUp - (openingSummary.GrossToll - openingSummary.ReversedToll);
+                        decimal openingNetToll = openingSummary.GrossToll - openingSummary.ReversedToll;
+                        openingBalance = openingSummary.TopUp - openingNetToll;
                     }
                 }
 
-                // ৩. নির্দিষ্ট Date Range-এর ফিল্টারড কুয়েরি
+                // ৩. নির্ধারিত সময়ের (Period) ডেটা গণনা
                 var periodQuery = _context.DoTransactions.AsQueryable();
 
                 if (effectiveFromDate.HasValue)
                 {
-                    // Date Range ফিল্টারিং
-                    periodQuery = periodQuery.Where(t => t.BankTxnDate.Date >= effectiveFromDate.Value && t.BankTxnDate.Date <= effectiveToDate);
+                    periodQuery = periodQuery.Where(t => t.BankTxnDate >= effectiveFromDate.Value && t.BankTxnDate < toDateExclusive);
                 }
                 else
                 {
-                    // কেবল AsOfDate / সূচনালগ্ন থেকে effectiveToDate ফিল্টারিং
-                    periodQuery = periodQuery.Where(t => t.BankTxnDate.Date <= effectiveToDate);
+                    periodQuery = periodQuery.Where(t => t.BankTxnDate < toDateExclusive);
                 }
 
                 var periodSummary = await periodQuery
                     .GroupBy(t => 1)
                     .Select(g => new
                     {
+                        // প্রকৃত টপ-আপ (রিফান্ড ক্রেডিট বাদ)
                         TotalTopUp = g.Sum(x => x.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase)
-                                               && x.TranStatus == TranStatus.Success ? x.TransactionAmount : 0m),
+                                             && x.TranStatus == TranStatus.Success
+                                             && string.IsNullOrEmpty(x.OriginalBankTxnId)
+                                             && (x.PartnerTxnId == null || !x.PartnerTxnId.EndsWith("_REV")) ? x.TransactionAmount : 0m),
 
+                        // গ্রস টোল (Success + Reversed)
                         GrossToll = g.Sum(x => x.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase)
-                                              && x.TranStatus == TranStatus.Success ? x.TransactionAmount : 0m),
+                                             && (x.TranStatus == TranStatus.Success || x.TranStatus == TranStatus.Reversed) ? x.TransactionAmount : 0m),
 
+                        // রিভার্সড টোল
                         ReversedToll = g.Sum(x => x.TranMode.Equals(TranMode.Debit, StringComparison.OrdinalIgnoreCase)
-                                                 && x.TranStatus == TranStatus.Reversed ? x.TransactionAmount : 0m)
+                                                && x.TranStatus == TranStatus.Reversed ? x.TransactionAmount : 0m)
                     })
                     .FirstOrDefaultAsync();
 
@@ -197,7 +211,7 @@ namespace ETCGatewayAPI.Services
                 decimal periodGrossToll = periodSummary?.GrossToll ?? 0m;
                 decimal periodReversedToll = periodSummary?.ReversedToll ?? 0m;
 
-                // ৪. মেয়াদী ও সমাপনী ব্যালেন্স গণনা
+                // ৪. নিখুঁত গাণিতিক সমীকরণ
                 decimal periodNetToll = periodGrossToll - periodReversedToll;
                 decimal closingBalance = openingBalance + periodTopUp - periodNetToll;
 

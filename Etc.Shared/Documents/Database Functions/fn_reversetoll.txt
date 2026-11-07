@@ -126,7 +126,7 @@ BEGIN
         p_bank_txn_id,
         p_bank_txn_date,
         'Success',
-        'Pending',
+        'Settled',
         '200',
         'Toll Reversal Credit',
         v_source_channel,

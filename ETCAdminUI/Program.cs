@@ -1,27 +1,40 @@
 ﻿using ETCAdminUI.Data;
 using ETCAdminUI.Models;
 using Microsoft.EntityFrameworkCore;
+using Etc.Shared.Interfaces;
+using ETCGatewayAPI.Services;
 
 // Npgsql স্বয়ংক্রিয়ভাবে Unspecified তারিখগুলোকে PostgreSQL-এ সেভ করতে দেবে।
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
-// WebApplicationBuilder ইন্সট্যান্স তৈরি ও অ্যাপ্লিকেশনের সার্ভিস কনফিগারেশন সূচনা
 var builder = WebApplication.CreateBuilder(args);
 
 // =========================================================================
-// 1. DATABASE CONFIGURATION (PostgreSQL Engine Setup)
+// 1. DATABASE CONFIGURATION
 // =========================================================================
-// appsettings.json থেকে ConnectionString নিয়ে Entity Framework Core-এর মাধ্যমে PostgreSQL সংযোগ যুক্ত করা হচ্ছে
-builder.Services.AddDbContext<DatabaseContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+string connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
 
+// ETCAdminUI এর নিজস্ব DbContext (SettlementService ইত্যাদির জন্য)
+builder.Services.AddDbContext<ETCAdminUI.Data.DatabaseContext>(options =>
+    options.UseNpgsql(connectionString));
 
-// Add services to the container.
+// Gateway-এর ReportService-এর জন্য প্রয়োজনীয় DbContext (👈 এই লাইনটি যোগ করুন)
+builder.Services.AddDbContext<ETCGatewayAPI.Data.DatabaseContext>(options =>
+    options.UseNpgsql(connectionString));
+
+// =========================================================================
+// 2. SERVICES REGISTRATION
+// =========================================================================
 builder.Services.AddControllersWithViews();
-builder.Services.AddScoped<Etc.Shared.Interfaces.ISettlementService, ETCAdminUI.Services.SettlementService>();
 
+builder.Services.AddScoped<ISettlementService, ETCAdminUI.Services.SettlementService>();
 
-// সেশন কনফিগারেশন (আপনার কোড অনুযায়ী)
+// Other Project services
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IReportService, ETCGatewayAPI.Services.ReportService>();
+builder.Services.AddScoped<IWalletTransactionService, ETCGatewayAPI.Services.WalletTransactionService>();
+
+// সেশন কনফিগারেশন
 builder.Services.AddSession(options =>
 {
     options.IdleTimeout = TimeSpan.FromMinutes(30);
@@ -29,12 +42,10 @@ builder.Services.AddSession(options =>
     options.Cookie.IsEssential = true;
 });
 
-builder.Services.AddHttpContextAccessor();
-
-// এপিআই কল (APIProcessHelper) করার জন্য HttpClient সার্ভিসটি লাগবে, তাই এটি যোগ করা হলো
+// এপিআই কল করার জন্য HttpClient
 builder.Services.AddHttpClient();
 
-// আপনার কাস্টম কনফিগারেশন ক্লাসের বাইন্ডিং (আপনার কোড অনুযায়ী)
+// কনফিগারেশন ক্লাস বাইন্ডিং
 builder.Services.Configure<ConfigValue>(builder.Configuration.GetSection("ConfigValue"));
 
 var app = builder.Build();
@@ -48,11 +59,9 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-// মিডলওয়্যার সিকোয়েন্স (আপনার কোড অনুযায়ী)
 app.UseSession();
 app.UseAuthorization();
 
-// প্রথমবার প্রজেক্ট রান করলে যাতে লগইন পেজ আসে, সেজন্য Account/Login সেট করা ভালো
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Account}/{action=Login}/{id?}");

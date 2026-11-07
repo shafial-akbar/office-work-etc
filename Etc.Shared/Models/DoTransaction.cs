@@ -42,7 +42,6 @@ namespace Etc.Shared.Models
         public string? RefNo4 { get; set; }
         public string? RefNo5 { get; set; }
 
-        [Required]
         public DateTime? ChannelTransactionDate { get; set; }
 
         [Required]

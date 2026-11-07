@@ -80,10 +80,10 @@ namespace Etc.Shared.Constants
 
     public static class SourceChannel
     {
-        public const string SPG = "SPG";
-        public const string Counter = "Counter";
-        public const string Wallet = "Wallet";
-        public const string Esheba = "Esheba";
+        public const string Wallet = "W";        // Wallet
+        public const string SPG = "O";           // Online SPG
+        public const string Counter = "C";       // OTC Counter
+        public const string Esheba = "E";        // E Sheba
     }
 
     public static class ReportType
