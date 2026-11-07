@@ -55,7 +55,7 @@
                     <label id="inputLabel" class="form-label small fw-semibold text-muted">Transaction Identifier</label>
                     <div class="input-group input-group-sm">
                         <span class="input-group-text bg-light text-muted">
-                            <i class="bi bi-hash"></i>
+                            <i class="bi bi-hash"></i> ID
                         </span>
                         <input type="text" id="searchValueInput" name="searchValue" class="form-control"
                                value="@currentValue" required autofocus />
@@ -65,10 +65,10 @@
                 <!-- Submit & Clear Buttons -->
                 <div class="col-md-2 d-flex align-items-end gap-2">
                     <button type="submit" class="btn btn-primary btn-sm flex-fill">
-                        <i class="bi bi-search"></i> Reconcile
+                        <i class="bi bi-search"></i> Search
                     </button>
                     <a asp-action="Reconcile" class="btn btn-outline-secondary btn-sm" title="Clear Search">
-                        <i class="bi bi-arrow-counterclockwise"></i>
+                        <i class="bi bi-arrow-counterclockwise">Reset</i>
                     </a>
                 </div>
             </form>
