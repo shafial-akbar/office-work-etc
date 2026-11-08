@@ -529,22 +529,64 @@ namespace EtcMwApi.Services
         // PRIVATE HELPER / REUSABLE METHODS
         // ==========================================
 
-        private async Task<Vehicle> FetchAndValidateRhdVehicleAsync(string vehicleRegNo, int companyOid)
+        private async Task<RhdVehicleDto> FetchAndValidateRhdVehicleAsync(string vehicleRegNo, int companyOid)
         {
             var checkResult = await _rhdApiService.GetVehicleInformation(vehicleRegNo, companyOid);
 
+            // ১. RHD API রেসপন্স সফল হয়েছে কিনা যাচাই
             if (!checkResult.Success || checkResult.Data == null)
             {
                 throw new InvalidOperationException($"RHD Inquiry Failed: {checkResult.Message}");
             }
 
-            if (checkResult.Data.Wallet != null)
+            var vehicleData = checkResult.Data;
+            var walletInfo = vehicleData.Wallet;
+
+            // ২. ওয়ালেট ইনফরমেশন যাচাই
+            if (walletInfo != null)
             {
-                throw new InvalidOperationException($"Vehicle is already registered in RHD ETC System under {checkResult.Data.Wallet.CompanyName}");
+                // কেস ক: অন্য কোম্পানিতে (MFS/Bank) রেজিস্টার্ড থাকলে
+                if (walletInfo.RegisteredToOtherCompany)
+                {
+                    string company = string.IsNullOrWhiteSpace(walletInfo.CompanyName)
+                        ? "another provider"
+                        : walletInfo.CompanyName;
+
+                    throw new InvalidOperationException($"Vehicle {vehicleRegNo} already has an active wallet registered with {company}.");
+                }
+
+                // কেস খ: নিজের কোম্পানিতে (Sonali Bank) আগে থেকেই ওয়ালেট নম্বর থাকলে
+                if (!string.IsNullOrWhiteSpace(walletInfo.WalletNumber))
+                {
+                    throw new InvalidOperationException($"Vehicle {vehicleRegNo} is already linked to wallet number: {walletInfo.WalletNumber}.");
+                }
+
+                // কেস গ: যদি Wallet অবজেক্ট থাকে এবং কোম্পানি নেম উপস্থিত থাকে (ডিফেন্সিভ চেক)
+                if (!string.IsNullOrWhiteSpace(walletInfo.CompanyName))
+                {
+                    throw new InvalidOperationException($"Vehicle {vehicleRegNo} is already registered under {walletInfo.CompanyName}.");
+                }
             }
 
-            return checkResult.Data;
+            return vehicleData;
         }
+
+        //private async Task<RhdVehicleDto> FetchAndValidateRhdVehicleAsync(string vehicleRegNo, int companyOid)
+        //{
+        //    var checkResult = await _rhdApiService.GetVehicleInformation(vehicleRegNo, companyOid);
+
+        //    if (!checkResult.Success || checkResult.Data == null)
+        //    {
+        //        throw new InvalidOperationException($"RHD Inquiry Failed: {checkResult.Message}");
+        //    }
+
+        //    if (checkResult.Data.Wallet != null)
+        //    {
+        //        throw new InvalidOperationException($"Vehicle is already registered in RHD ETC System under {checkResult.Data.Wallet.CompanyName}");
+        //    }
+
+        //    return checkResult.Data;
+        //}
 
         private async Task ConfirmRhdRegistrationAsync(string regNo, string mobileNo, string walletNo, int companyOid, string description)
         {
@@ -567,7 +609,7 @@ namespace EtcMwApi.Services
         private static Vehicle MapToVehicleInformation(
             string regNo,
             Guid walletId,
-            Vehicle rhdData)
+            RhdVehicleDto rhdData)
         {
             return new Vehicle
             {

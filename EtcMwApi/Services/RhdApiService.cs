@@ -26,16 +26,17 @@ namespace EtcMwApi.Services
             _logger = logger;
         }
 
-        public async Task<ApiResponse<Vehicle>> GetVehicleInformation(string registrationNumber, int companyOid)
+
+        public async Task<ApiResponse<RhdVehicleDto>> GetVehicleInformation(string registrationNumber, int companyOid)
         {
             try
             {
-                var _httpClient = _httpClientFactory.CreateClient("RhdApiClient");
-
+                var httpClient = _httpClientFactory.CreateClient("RhdApiClient");
                 var token = await _tokenService.GetToken();
+
                 if (string.IsNullOrEmpty(token))
                 {
-                    return new ApiResponse<Vehicle>
+                    return new ApiResponse<RhdVehicleDto>
                     {
                         Success = false,
                         Message = "Failed to get authentication token",
@@ -44,7 +45,7 @@ namespace EtcMwApi.Services
                     };
                 }
 
-                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
                 var request = new
                 {
@@ -52,32 +53,39 @@ namespace EtcMwApi.Services
                     companyOid = companyOid
                 };
 
-                var response = await _httpClient.PostAsJsonAsync($"{_apiSettings.BaseUrl}/api/v2/wallet/vehicle-info", request);
+                var response = await httpClient.PostAsJsonAsync($"{_apiSettings.BaseUrl}/api/v2/wallet/vehicle-info", request);
                 var content = await response.Content.ReadAsStringAsync();
 
                 var options = new JsonSerializerOptions
                 {
-                    PropertyNameCaseInsensitive = true // Handle case insensitivity
+                    PropertyNameCaseInsensitive = true
                 };
 
-                var result = JsonSerializer.Deserialize<VehicleResponse>(content, options);
+                var result = JsonSerializer.Deserialize<RhdVehicleResponse>(content, options);
 
-                if (response.IsSuccessStatusCode)
+                if (response.IsSuccessStatusCode && result?.Data != null)
                 {
-                    return new ApiResponse<Vehicle> { Success = result.Success, Reason = result.Reason, Message = result.Message, Data = result.Data, StatusCode = (int)result.Code };
+                    return new ApiResponse<RhdVehicleDto>
+                    {
+                        Success = result.Success,
+                        Reason = result.Reason,
+                        Message = result.Message,
+                        Data = result.Data,
+                        StatusCode = result.Code
+                    };
                 }
-                
-                return new ApiResponse<Vehicle>
+
+                return new ApiResponse<RhdVehicleDto>
                 {
                     Success = false,
-                    Message = $"{result.Message}",
-                    Reason="Failed",
+                    Message = result?.Message ?? "Failed to retrieve vehicle info",
+                    Reason = "Failed",
                     StatusCode = (int)response.StatusCode
                 };
             }
             catch (Exception ex)
             {
-                return new ApiResponse<Vehicle>
+                return new ApiResponse<RhdVehicleDto>
                 {
                     Success = false,
                     Message = ex.Message,
@@ -86,6 +94,70 @@ namespace EtcMwApi.Services
                 };
             }
         }
+
+
+        #region "old code"
+        //public async Task<ApiResponse<Vehicle>> GetVehicleInformation(string registrationNumber, int companyOid)
+        //{
+        //    try
+        //    {
+        //        var _httpClient = _httpClientFactory.CreateClient("RhdApiClient");
+
+        //        var token = await _tokenService.GetToken();
+        //        if (string.IsNullOrEmpty(token))
+        //        {
+        //            return new ApiResponse<Vehicle>
+        //            {
+        //                Success = false,
+        //                Message = "Failed to get authentication token",
+        //                Reason = "Failed",
+        //                StatusCode = 401
+        //            };
+        //        }
+
+        //        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        //        var request = new
+        //        {
+        //            vehicleRegistrationNumber = registrationNumber,
+        //            companyOid = companyOid
+        //        };
+
+        //        var response = await _httpClient.PostAsJsonAsync($"{_apiSettings.BaseUrl}/api/v2/wallet/vehicle-info", request);
+        //        var content = await response.Content.ReadAsStringAsync();
+
+        //        var options = new JsonSerializerOptions
+        //        {
+        //            PropertyNameCaseInsensitive = true // Handle case insensitivity
+        //        };
+
+        //        var result = JsonSerializer.Deserialize<VehicleResponse>(content, options);
+
+        //        if (response.IsSuccessStatusCode)
+        //        {
+        //            return new ApiResponse<Vehicle> { Success = result.Success, Reason = result.Reason, Message = result.Message, Data = result.Data, StatusCode = (int)result.Code };
+        //        }
+
+        //        return new ApiResponse<Vehicle>
+        //        {
+        //            Success = false,
+        //            Message = $"{result.Message}",
+        //            Reason = "Failed",
+        //            StatusCode = (int)response.StatusCode
+        //        };
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        return new ApiResponse<Vehicle>
+        //        {
+        //            Success = false,
+        //            Message = ex.Message,
+        //            Reason = "Exception",
+        //            StatusCode = 500
+        //        };
+        //    }
+        //}
+        #endregion
 
         public async Task<ApiResponse<VehicleRegiInformation>> RegisterVehicle(VehicleRegistrationRequest request)
         {
