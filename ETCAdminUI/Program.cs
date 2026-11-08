@@ -25,7 +25,8 @@ builder.Services.AddDbContext<ETCGatewayAPI.Data.DatabaseContext>(options =>
 // =========================================================================
 // 2. SERVICES REGISTRATION
 // =========================================================================
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews()
+    .AddRazorRuntimeCompilation();
 
 builder.Services.AddScoped<ISettlementService, ETCAdminUI.Services.SettlementService>();
 
