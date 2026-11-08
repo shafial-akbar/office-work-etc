@@ -574,12 +574,14 @@ namespace EtcMwApi.Services
                 Id = Guid.NewGuid(),
                 WalletId = walletId,
                 VehicleRegistrationNumber = regNo,
-                ChassisNo = rhdData.ChassisNo,
-                BrtaClass = rhdData.BrtaClass,
-                RhdClass = rhdData.RhdClass,
-                VehicleCC = rhdData.VehicleCC,
-                VehicleColour = rhdData.VehicleColour,
-                Status = VehicleStatus.Active, // Explicitly set status on initial mapping
+                // RHD থেকে কোনো ফিল্ড null আসলে সেফ ফলব্যাক বসবে
+                ChassisNo = rhdData.ChassisNo ?? string.Empty,
+                BrtaClass = rhdData.BrtaClass ?? string.Empty,
+                RhdClass = rhdData.RhdClass ?? string.Empty,
+                VehicleCC = rhdData.VehicleCC ?? string.Empty,
+                // কালার নাল বা ফাঁকা আসলে "N/A" বা ডিফল্ট মান বসবে
+                VehicleColour = string.IsNullOrWhiteSpace(rhdData.VehicleColour)? "N/A" : rhdData.VehicleColour,
+                Status = VehicleStatus.Active,
                 RegisterDate = DateTime.UtcNow
             };
         }

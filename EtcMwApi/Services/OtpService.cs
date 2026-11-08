@@ -38,7 +38,9 @@ namespace EtcMwApi.Services
                 };
 
                 var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-                var response = await _httpClient.PostAsync("api/sblservice/SendOTP1", content);
+
+                string requestUrl = $"{_httpClient.BaseAddress}api/sblservice/SendOTP1";
+                var response = await _httpClient.PostAsync(requestUrl, content);
                 var responseString = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
@@ -96,7 +98,9 @@ namespace EtcMwApi.Services
                 };
 
                 var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-                var response = await _httpClient.PostAsync("api/sblservice/VerifyOTP", content);
+
+                string requestUrl = $"{_httpClient.BaseAddress}api/sblservice/VerifyOTP";
+                var response = await _httpClient.PostAsync(requestUrl, content);
                 var responseString = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
