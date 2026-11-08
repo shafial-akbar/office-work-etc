@@ -37,17 +37,17 @@ namespace ETCGatewayAPI.Services
                 // ২. Date Range ফিল্টার
                 query = query.Where(t => t.BankTxnDate >= fromDate && t.BankTxnDate < toDateExclusive);
 
-                // ৩. Purpose / ReportType ফিল্টারিং লজিক
+                // ৩. Purpose / ReportType ফিল্টারিং লজিক (C# ভ্যারিয়েবলে চেক হচ্ছে, তাই StringComparison নিরাপদ)
                 if (!string.IsNullOrWhiteSpace(request.Purpose) &&
                     request.Purpose.Equals(ReportType.Settlement, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Settlement Report: শুধুমাত্র সম্পূর্ণ হওয়া Settled ট্রানজেকশন
+                    // Settlement Report: শুধুমাত্র সম্পন্ন হওয়া Settled ট্রানজেকশন
                     query = query.Where(t => t.SettlStatus == SettlementStatus.Settled);
                 }
                 else if (!string.IsNullOrWhiteSpace(request.Purpose) &&
                          request.Purpose.Equals(ReportType.Reconciliation, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Reconciliation Report: Success এবং Reversed উভয় ট্রানজেকশন
+                    // Reconciliation Report: Success এবং Reversed উভয় ট্রানজেকশন
                     query = query.Where(t => t.TranStatus == TranStatus.Success || t.TranStatus == TranStatus.Reversed);
                 }
                 else if (!string.IsNullOrWhiteSpace(request.Purpose) &&
@@ -65,9 +65,12 @@ namespace ETCGatewayAPI.Services
                 // ৪. TranMode ফিল্টার (Debit/Credit)
                 if (!string.IsNullOrWhiteSpace(request.TranMode))
                 {
-                    query = query.Where(t => t.TranMode.Equals(request.TranMode, StringComparison.OrdinalIgnoreCase));
+                    var filterTranMode = request.TranMode.Trim().ToLower();
 
-                    // ক্রেডিট মোড ফিল্টার করা থাকলে ইন-হাউস রিফান্ড এন্ট্রি (_REV) বাদ রাখা (যদি না Reversal রিপোর্ট চাওয়া হয়)
+                    // ✅ LINQ SQL Translation Friendly: StringComparison মেথডের বদলে ToLower() ব্যবহার
+                    query = query.Where(t => t.TranMode.ToLower() == filterTranMode);
+
+                    // ক্রেডিট মোড ফিল্টার করা থাকলে ইন-হাউস রিফান্ড এন্ট্রি (_REV) বাদ রাখা (যদি না Reversal রিপোর্ট চাওয়া হয়)
                     if (request.TranMode.Equals(TranMode.Credit, StringComparison.OrdinalIgnoreCase) &&
                         (string.IsNullOrWhiteSpace(request.Purpose) || !request.Purpose.Equals(ReportType.Reversal, StringComparison.OrdinalIgnoreCase)))
                     {
@@ -79,10 +82,13 @@ namespace ETCGatewayAPI.Services
                 // ৫. SourceChannel ফিল্টার
                 if (!string.IsNullOrWhiteSpace(request.SourceChannel))
                 {
-                    query = query.Where(t => t.SourceChannel.Equals(request.SourceChannel, StringComparison.OrdinalIgnoreCase));
+                    var filterSourceChannel = request.SourceChannel.Trim().ToLower();
+
+                    // ✅ LINQ SQL Translation Friendly: StringComparison মেথডের বদলে ToLower() ব্যবহার
+                    query = query.Where(t => t.SourceChannel != null && t.SourceChannel.ToLower() == filterSourceChannel);
                 }
 
-                // ৬. প্রজেকশন (RefNo1 গাড়ির নম্বর অক্ষুণ্ণ রাখা হয়েছে)
+                // ৬. প্রজেকশন (RefNo1 ডেবিটে গাড়ির নম্বর এবং ক্রেডিটে চ্যানেল রেফারেন্স)
                 var details = await query
                     .OrderByDescending(t => t.BankTxnDate)
                     .Select(t => new ReportDetailDto
@@ -101,7 +107,7 @@ namespace ETCGatewayAPI.Services
                         PartnerId = t.TranMode == TranMode.Debit ? t.PartnerId : null,
                         PartnerTxnId = t.TranMode == TranMode.Debit ? t.PartnerTxnId : null,
 
-                        // Common / Channel Fields (RefNo1 ডেবিটে গাড়ির নম্বর এবং ক্রেডিটে চ্যানেল রেফারেন্স বহন করে)
+                        // Common / Channel Fields
                         RefNo1 = t.RefNo1,
                         ChannelTransactionDate = t.TranMode == TranMode.Credit ? t.ChannelTransactionDate : null
                     })
